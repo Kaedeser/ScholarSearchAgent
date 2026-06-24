@@ -1,0 +1,7 @@
+-e ./framework/sentence-transformers
+numpy==1.26.4
+scipy==1.13.1
+scikit-learn==1.5.2
+torch>=2.1.0
+transformers>=4.41.0,<5.0.0
+tqdm>=4.66.0

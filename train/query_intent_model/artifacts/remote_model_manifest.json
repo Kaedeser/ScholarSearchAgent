@@ -1,0 +1,142 @@
+{
+  "remote_root": "/home/model_train/query_intent_model",
+  "downloaded_at_note": "Downloaded from cu05 through mu01; credentials intentionally omitted.",
+  "files": [
+    {
+      "rel": "logs/current_biobert_retry_logs.txt",
+      "size": 102,
+      "remote_sha256": "eeca9ce90525a25c911ac063fa914d93c90a808c4076137b30089b54e13ce958",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\logs\\current_biobert_retry_logs.txt",
+      "local_sha256": "eeca9ce90525a25c911ac063fa914d93c90a808c4076137b30089b54e13ce958",
+      "sha256_match": true
+    },
+    {
+      "rel": "logs/train_gate_biobert_20260615_145106_retry.log",
+      "size": 245024,
+      "remote_sha256": "bcabd45a50dd43e71bb7bd607f7b7da9774e73a207d72ece5a381c242779304d",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\logs\\train_gate_biobert_20260615_145106_retry.log",
+      "local_sha256": "bcabd45a50dd43e71bb7bd607f7b7da9774e73a207d72ece5a381c242779304d",
+      "sha256_match": true
+    },
+    {
+      "rel": "logs/train_intent_biobert_20260615_145106_retry.log",
+      "size": 228889,
+      "remote_sha256": "46eb217bd77966611b381cae1d2af17a68d2c6a17b776800d71d62803973d6b8",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\logs\\train_intent_biobert_20260615_145106_retry.log",
+      "local_sha256": "46eb217bd77966611b381cae1d2af17a68d2c6a17b776800d71d62803973d6b8",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/intent_biobert/config.json",
+      "size": 1207,
+      "remote_sha256": "4de4bd62ccbfab72ad1591c9be01b50e2123c205bfc74af7751ff1b43af70c56",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\intent_biobert\\config.json",
+      "local_sha256": "4de4bd62ccbfab72ad1591c9be01b50e2123c205bfc74af7751ff1b43af70c56",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/intent_biobert/label_map.json",
+      "size": 671,
+      "remote_sha256": "2fae695825f573581e54482a0ed06232a51810c0c5ed3b56f5482a5c32559f37",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\intent_biobert\\label_map.json",
+      "local_sha256": "2fae695825f573581e54482a0ed06232a51810c0c5ed3b56f5482a5c32559f37",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/intent_biobert/metrics.json",
+      "size": 961,
+      "remote_sha256": "943cee28035d324edb19e6b38e95387d22b41029151ef543a0f730df93d300d3",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\intent_biobert\\metrics.json",
+      "local_sha256": "943cee28035d324edb19e6b38e95387d22b41029151ef543a0f730df93d300d3",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/intent_biobert/model.safetensors",
+      "size": 433289224,
+      "remote_sha256": "a7f88a28807b69bdcbf56e15cfe0a604dbf2f89d67ac541825635e07cb8c755b",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\intent_biobert\\model.safetensors",
+      "local_sha256": "a7f88a28807b69bdcbf56e15cfe0a604dbf2f89d67ac541825635e07cb8c755b",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/intent_biobert/tokenizer.json",
+      "size": 669021,
+      "remote_sha256": "bbd5abc89354dfd989c418c5fdef776d1fcd22a439e90d46ee3f557dcefc5e89",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\intent_biobert\\tokenizer.json",
+      "local_sha256": "bbd5abc89354dfd989c418c5fdef776d1fcd22a439e90d46ee3f557dcefc5e89",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/intent_biobert/tokenizer_config.json",
+      "size": 351,
+      "remote_sha256": "d016aa3a11fc465f3fb41a83ca78ad57cdd9133a45a1d56a90982595e966ff62",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\intent_biobert\\tokenizer_config.json",
+      "local_sha256": "d016aa3a11fc465f3fb41a83ca78ad57cdd9133a45a1d56a90982595e966ff62",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/intent_biobert/training_args.bin",
+      "size": 4856,
+      "remote_sha256": "8a6120468da574b27a855707386c3a2fc6c15de49a9932403f8ed31fa2d0effa",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\intent_biobert\\training_args.bin",
+      "local_sha256": "8a6120468da574b27a855707386c3a2fc6c15de49a9932403f8ed31fa2d0effa",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/query_gate_biobert/config.json",
+      "size": 883,
+      "remote_sha256": "96f37b232b94541abf78e09777366ad5f24f7ce2e72647a43d8bf97d204e0015",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\query_gate_biobert\\config.json",
+      "local_sha256": "96f37b232b94541abf78e09777366ad5f24f7ce2e72647a43d8bf97d204e0015",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/query_gate_biobert/label_map.json",
+      "size": 209,
+      "remote_sha256": "48dfdcc33294d1e58b253556bd15e1983a79d76b7591c5911e12ee079e05c564",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\query_gate_biobert\\label_map.json",
+      "local_sha256": "48dfdcc33294d1e58b253556bd15e1983a79d76b7591c5911e12ee079e05c564",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/query_gate_biobert/metrics.json",
+      "size": 927,
+      "remote_sha256": "558d2a9014dee1f8a26b5f900067e6abb99ecf99869ab07f38a5dbe3e263a244",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\query_gate_biobert\\metrics.json",
+      "local_sha256": "558d2a9014dee1f8a26b5f900067e6abb99ecf99869ab07f38a5dbe3e263a244",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/query_gate_biobert/model.safetensors",
+      "size": 433270768,
+      "remote_sha256": "294b9932af831fdfd4512ff8a2c8901678924346d97fda4d691ff3e0a06b0ea0",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\query_gate_biobert\\model.safetensors",
+      "local_sha256": "294b9932af831fdfd4512ff8a2c8901678924346d97fda4d691ff3e0a06b0ea0",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/query_gate_biobert/tokenizer.json",
+      "size": 669021,
+      "remote_sha256": "bbd5abc89354dfd989c418c5fdef776d1fcd22a439e90d46ee3f557dcefc5e89",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\query_gate_biobert\\tokenizer.json",
+      "local_sha256": "bbd5abc89354dfd989c418c5fdef776d1fcd22a439e90d46ee3f557dcefc5e89",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/query_gate_biobert/tokenizer_config.json",
+      "size": 351,
+      "remote_sha256": "d016aa3a11fc465f3fb41a83ca78ad57cdd9133a45a1d56a90982595e966ff62",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\query_gate_biobert\\tokenizer_config.json",
+      "local_sha256": "d016aa3a11fc465f3fb41a83ca78ad57cdd9133a45a1d56a90982595e966ff62",
+      "sha256_match": true
+    },
+    {
+      "rel": "outputs/query_gate_biobert/training_args.bin",
+      "size": 4856,
+      "remote_sha256": "806bb19800e494b58f85707da7ee81fdb8666f65569af12d48c3d610d4a921fa",
+      "local_path": "F:\\中国研究生人工智能大赛\\ScholarSearchAgent\\train\\query_intent_model\\outputs\\query_gate_biobert\\training_args.bin",
+      "local_sha256": "806bb19800e494b58f85707da7ee81fdb8666f65569af12d48c3d610d4a921fa",
+      "sha256_match": true
+    }
+  ]
+}

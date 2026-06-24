@@ -1,0 +1,7 @@
+data/processed/
+outputs/
+logs/
+.venv/
+__pycache__/
+*.pyc
+*.log

@@ -1,0 +1,19 @@
+{
+  "task_name": "query_gate",
+  "model_name": "/home/model_train/query_intent_model/local_models/biobert-base-cased-v1.1",
+  "train_file": "data/processed/gate/train.jsonl",
+  "validation_file": "data/processed/gate/dev.jsonl",
+  "test_file": "data/processed/gate/test.jsonl",
+  "output_dir": "outputs/query_gate_biobert",
+  "max_length": 192,
+  "learning_rate": 2e-5,
+  "num_train_epochs": 3,
+  "per_device_train_batch_size": 16,
+  "per_device_eval_batch_size": 32,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.06,
+  "optim": "adamw_torch",
+  "save_total_limit": 1,
+  "fp16": false,
+  "seed": 42
+}

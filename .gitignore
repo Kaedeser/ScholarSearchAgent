@@ -1,0 +1,73 @@
+# Python cache and local tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments
+.venv/
+venv/
+env/
+
+# Secrets and machine-local configuration
+.env
+*.env
+!*.env.example
+!example.env
+!**/example.env
+config/database.env
+data_ingestion_indexing/config/*.env
+!data_ingestion_indexing/config/*.env.example
+!data_ingestion_indexing/config/example.env
+
+# Logs and runtime state
+*.log
+logs/
+*.pid
+
+# Model weights and trained checkpoints
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.gguf
+checkpoint*/
+checkpoints/
+
+# Training output artifacts that commonly contain heavyweight models.
+# Keep reports, configs, metrics, and small manifests trackable via force-add if needed.
+**/outputs/**/model.*
+**/outputs/**/adapter_model.*
+**/outputs/**/pytorch_model.*
+**/outputs/**/optimizer.*
+**/outputs/**/scheduler.*
+**/outputs/**/rng_state.*
+**/outputs/**/trainer_state.json
+
+# Generated training artifacts and local datasets
+**/outputs/
+**/logs/
+**/data_processed/
+train/**/data/
+
+# Third-party repository metadata nested inside vendored code
+**/.git/
+
+# Local cloned framework sources; install through requirements instead of committing
+# an embedded repository without submodule metadata.
+train/selector_reranker_model/framework/sentence-transformers/
+train/crawler_strategy_model/LLaMA-Factory/
+train/**/packages/
+
+# Binary dependency archives
+*.whl
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar

@@ -1,0 +1,5 @@
+database.env
+*.local.env
+!.gitignore
+!README.md
+!database.env.example

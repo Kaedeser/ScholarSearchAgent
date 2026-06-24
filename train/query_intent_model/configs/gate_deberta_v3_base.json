@@ -1,0 +1,17 @@
+{
+  "task_name": "query_gate",
+  "model_name": "microsoft/deberta-v3-base",
+  "train_file": "data/processed/gate/train.jsonl",
+  "validation_file": "data/processed/gate/dev.jsonl",
+  "test_file": "data/processed/gate/test.jsonl",
+  "output_dir": "outputs/query_gate_deberta_v3_base",
+  "max_length": 256,
+  "learning_rate": 2e-5,
+  "num_train_epochs": 4,
+  "per_device_train_batch_size": 16,
+  "per_device_eval_batch_size": 32,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.06,
+  "fp16": true,
+  "seed": 42
+}

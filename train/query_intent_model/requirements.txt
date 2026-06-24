@@ -1,0 +1,5 @@
+accelerate>=0.28
+datasets>=2.18
+numpy>=1.24
+sentencepiece>=0.1.99
+transformers>=4.39,<5
