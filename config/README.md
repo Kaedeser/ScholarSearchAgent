@@ -1,6 +1,7 @@
 # ScholarSearch-Agent 配置说明
 
 本目录统一管理 ScholarSearch-Agent 的数据库、索引库和图数据库连接配置。
+在线检索 demo 也从这里读取三个远端模型服务地址。
 
 默认配置文件：
 
@@ -52,6 +53,39 @@ NEO4J_GRAPH_NAME=paper
 ```
 
 `build_neo4j_paper_kg.py` 使用 `NEO4J_HTTP_URL` 写入和维护图谱；如果后续应用侧使用官方 Neo4j driver，优先使用 `NEO4J_URI` 或 `NEO4J_BOLT_URL`。
+
+## 模型服务配置
+
+`scholar_app` 和 `cost_control_cache.SearchPipeline` 会按以下配置调用三个已部署模型。远端异常会记录在返回结果的 `cost.model_services.errors` 中，并回退到原规则逻辑。
+
+```text
+MODEL_SERVICES_ENABLED=true
+MODEL_SERVICE_TIMEOUT_SEC=8
+
+QUERY_INTENT_ENABLED=true
+QUERY_INTENT_SERVICE_URL=http://10.99.24.182:22436
+QUERY_INTENT_MODE=auto
+
+SELECTOR_RERANKER_ENABLED=true
+SELECTOR_RERANKER_SERVICE_URL=http://10.99.24.182:32082
+SELECTOR_RERANKER_CANDIDATE_LIMIT=100
+
+CRAWLER_STRATEGY_ENABLED=true
+CRAWLER_STRATEGY_SERVICE_URL=http://10.99.24.182:32183
+CRAWLER_STRATEGY_TOP_N=3
+```
+
+模型接入位置：
+
+- Query Intent：检索前判断是否为论文检索，并把 intent 标签注入解析结果。
+- Selector Reranker：候选归一和规则排序后，对候选论文进行 CrossEncoder 重排。
+- Crawler Strategy：最终 topN 论文写入 `metadata.crawler_strategy`，记录是否继续展开 section。
+
+离线调试时可以临时关闭：
+
+```bash
+python -m scholar_app.cli --disable-model-services --backend jsonl search --query "image retrieval"
+```
 
 ## 路径规则
 

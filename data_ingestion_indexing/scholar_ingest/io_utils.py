@@ -1,3 +1,5 @@
+# 中文功能说明：数据导入 IO 工具，提供 JSON/JSONL 读写和目录创建能力。
+
 from __future__ import annotations
 
 import json

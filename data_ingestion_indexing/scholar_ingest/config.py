@@ -1,3 +1,5 @@
+# 中文功能说明：数据导入配置模块，读取数据库、索引库、向量库和数据路径配置。
+
 from __future__ import annotations
 
 import os

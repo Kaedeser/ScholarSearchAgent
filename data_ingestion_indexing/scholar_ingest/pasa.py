@@ -1,3 +1,5 @@
+# 中文功能说明：PaSa 数据转换模块，将原始查询、论文和全文章节转换为统一 JSONL。
+
 from __future__ import annotations
 
 import json

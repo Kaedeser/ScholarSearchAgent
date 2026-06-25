@@ -1,3 +1,5 @@
+# 中文功能说明：数据接入 ID 工具测试，验证 arXiv、标题和 chunk 标识生成逻辑。
+
 from scholar_ingest.ids import normalize_arxiv_id, paper_id_from_arxiv, slugify_title
 
 

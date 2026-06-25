@@ -12,6 +12,11 @@ htmlcov/
 venv/
 env/
 
+# Frontend dependencies and build output
+node_modules/
+apps/frontend/node_modules/
+apps/frontend/dist/
+
 # Secrets and machine-local configuration
 .env
 *.env
@@ -19,6 +24,7 @@ env/
 !example.env
 !**/example.env
 config/database.env
+configs/database.env
 data_ingestion_indexing/config/*.env
 !data_ingestion_indexing/config/*.env.example
 !data_ingestion_indexing/config/example.env
@@ -54,6 +60,7 @@ checkpoints/
 **/logs/
 **/data_processed/
 train/**/data/
+training/**/data/
 
 # Third-party repository metadata nested inside vendored code
 **/.git/
@@ -63,6 +70,9 @@ train/**/data/
 train/selector_reranker_model/framework/sentence-transformers/
 train/crawler_strategy_model/LLaMA-Factory/
 train/**/packages/
+training/selector_reranker_model/framework/sentence-transformers/
+training/crawler_strategy_model/LLaMA-Factory/
+training/**/packages/
 
 # Binary dependency archives
 *.whl

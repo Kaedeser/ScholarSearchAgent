@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- 中文功能说明：独立前端页面结构，提供 API 地址配置、检索输入、结果表格和 Trace 面板容器。 -->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ScholarSearch</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell header-inner">
+      <div>
+        <h1>ScholarSearch</h1>
+        <p id="api-status" class="status">API idle</p>
+      </div>
+      <form id="api-form" class="api-form">
+        <label for="api-base">API</label>
+        <input id="api-base" name="api-base" autocomplete="off" spellcheck="false">
+        <button type="submit">Save</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="shell workspace">
+    <form id="search-form" class="search-form">
+      <input id="query" name="query" autocomplete="off" value="image retrieval representation learning">
+      <input id="topk" name="topk" type="number" min="1" max="50" value="10" aria-label="Top K">
+      <button id="submit" type="submit">Search</button>
+    </form>
+
+    <section class="layout">
+      <div class="panel results-panel">
+        <div class="panel-head">
+          <h2>Results</h2>
+          <span id="result-meta" class="meta">Ready</span>
+        </div>
+        <div id="results" class="empty">No results yet.</div>
+      </div>
+
+      <aside class="panel trace-panel">
+        <div class="panel-head">
+          <h2>Trace</h2>
+          <span id="trace-meta" class="meta">0 actions</span>
+        </div>
+        <div id="trace" class="trace-body"></div>
+        <pre id="raw"></pre>
+      </aside>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

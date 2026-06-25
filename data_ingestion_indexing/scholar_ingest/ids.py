@@ -1,3 +1,5 @@
+# 中文功能说明：标识符工具模块，负责 arXiv ID 规范化、标题哈希和 chunk ID 生成。
+
 from __future__ import annotations
 
 import hashlib
