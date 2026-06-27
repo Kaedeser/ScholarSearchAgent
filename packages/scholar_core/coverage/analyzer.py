@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 
 from packages.scholar_core.models import Candidate, CoverageReport, QueryIntent
+from packages.scholar_core.text import normalize_space
 
 
 class CoverageAnalyzer:
@@ -56,7 +57,25 @@ class CoverageAnalyzer:
             return []
         anchors = intent.research_field[:2] + intent.soft_constraints[:3]
         queries: list[str] = []
-        for constraint in missing[:3]:
+        for constraint in missing[:4]:
             terms = [constraint] + anchors
             queries.append(" ".join(dict.fromkeys(term for term in terms if term)))
-        return queries
+        if len(missing) >= 2:
+            for index in range(min(3, len(missing) - 1)):
+                terms = [missing[index], missing[index + 1]] + intent.soft_constraints[:2]
+                queries.append(" ".join(dict.fromkeys(term for term in terms if term)))
+        if intent.sub_queries:
+            queries.append(" ".join(dict.fromkeys(missing[:3] + intent.sub_queries[:1])))
+        return _unique(queries)[:6]
+
+
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        clean = normalize_space(value)
+        key = clean.lower()
+        if clean and key not in seen:
+            seen.add(key)
+            result.append(clean)
+    return result

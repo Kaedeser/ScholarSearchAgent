@@ -16,6 +16,7 @@ from packages.scholar_core.models import Candidate
 from packages.scholar_core.model_services.ports import CrawlerStrategyPrediction, QueryIntentPrediction
 from packages.scholar_core.normalization.normalizer import CandidateNormalizer
 from packages.scholar_core.pipeline import SearchPipeline
+from packages.scholar_core.planning.planner import SearchPlanner
 from packages.scholar_core.query_understanding.parser import QueryParser
 from packages.scholar_eval.evaluation import score_prediction
 from packages.scholar_infra.retrieval_backends.retrieval import LocalCorpus
@@ -111,6 +112,25 @@ def test_query_parser_generates_constraints_and_subqueries():
     assert parsed.sub_queries
 
 
+def test_query_parser_expands_failure_case_terms():
+    parsed = QueryParser().parse("What work proposes to model speech based on HuBERT codes or semantic tokens?")
+
+    assert "hubert codes" in parsed.must_have_constraints
+    assert "semantic tokens" in parsed.must_have_constraints
+    assert any("discrete speech units" in query or "speech tokens" in query for query in parsed.sub_queries)
+
+
+def test_search_planner_uses_bounded_multi_source_actions():
+    parsed = QueryParser().parse("Which work introduced mask classification-based methods for instance-level segmentation?")
+    plan = SearchPlanner(per_query_top_k=60).plan(parsed)
+
+    sources = {action.source for action in plan.search_actions}
+
+    assert {"local_title_bm25", "local_chunk_bm25", "local_tfidf"} <= sources
+    assert any(action.top_k < 60 for action in plan.search_actions)
+    assert plan.budget["max_candidates_for_selector"] == 400
+
+
 def test_candidate_normalizer_merges_arxiv_aliases():
     candidates = [
         Candidate("arxiv:2301.00001", "Paper A", sources={"local_title_bm25"}, raw_scores={"a": 1.0}),
@@ -129,6 +149,48 @@ def test_score_prediction_computes_basic_metrics():
     assert round(metrics.mrr, 3) == 0.5
 
 
+def test_ranker_matches_constraints_by_token_not_substring():
+    pipeline_query = QueryParser().parse("Find papers about semantic tokens")
+    candidate = Candidate(
+        "arxiv:3333.00003",
+        "Conditional Generative Fields",
+        abstract="A conditional model for rendering.",
+        sources={"local_title_bm25"},
+        raw_scores={"local_title_bm25": 1.0},
+    )
+    from packages.scholar_core.ranking.ranker import CandidateRanker
+
+    ranked = CandidateRanker().rank([candidate], pipeline_query, top_k=1)
+
+    assert "semantic" in ranked[0].missing_constraints
+    assert "tokens" in ranked[0].missing_constraints
+
+
+def test_ranker_prefers_exact_constraint_coverage():
+    parsed = QueryParser().parse("Find mask classification methods for instance-level segmentation")
+    candidates = [
+        Candidate(
+            "arxiv:partial",
+            "Per-Pixel Classification is Not All You Need for Semantic Segmentation",
+            abstract="A segmentation method with classification labels.",
+            sources={"local_title_bm25"},
+            raw_scores={"local_title_bm25": 4.0},
+        ),
+        Candidate(
+            "arxiv:exact",
+            "Mask Classification for Instance-Level Segmentation",
+            abstract="A mask classification method for instance-level segmentation.",
+            sources={"local_title_bm25"},
+            raw_scores={"local_title_bm25": 2.0},
+        ),
+    ]
+    from packages.scholar_core.ranking.ranker import CandidateRanker
+
+    ranked = CandidateRanker().rank(candidates, parsed, top_k=2)
+
+    assert ranked[0].paper_id == "arxiv:exact"
+
+
 def test_pipeline_returns_ranked_result(tmp_path):
     processed = make_processed_dir(tmp_path)
     pipeline = build_pipeline(processed)
@@ -138,6 +200,40 @@ def test_pipeline_returns_ranked_result(tmp_path):
     assert response.plan.expand_citations_for == ["arxiv:1111.00001"]
     assert response.cost["citation_expansion_seeds"][0]["paper_id"] == "arxiv:1111.00001"
     assert response.coverage.coverage
+
+
+class RecordingCorpus:
+    backend_name = "recording"
+
+    def __init__(self) -> None:
+        self.actions = []
+
+    def run_action(self, action):
+        self.actions.append(action)
+        return [
+            Candidate(
+                "arxiv:unrelated",
+                "Database Query Optimizers",
+                abstract="Relational query planning and database execution.",
+                sources={action.source},
+                raw_scores={action.source: 1.0},
+            )
+        ]
+
+    def stats(self) -> dict:
+        return {"backend": self.backend_name}
+
+
+def test_pipeline_second_round_includes_sparse_retrieval():
+    corpus = RecordingCorpus()
+    pipeline = SearchPipeline(corpus, per_query_top_k=5)
+
+    response = pipeline.search("semantic tokens for speech generation", top_k=1)
+
+    first_round_count = len(response.plan.search_actions)
+    second_round_sources = {action.source for action in corpus.actions[first_round_count:]}
+    assert response.cost["rounds"] == 2
+    assert "local_tfidf" in second_round_sources
 
 
 class FakeQueryIntentService:

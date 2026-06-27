@@ -110,6 +110,10 @@ class SearchPipeline:
                 SearchAction("local_chunk_bm25", next_query, self.planner.per_query_top_k, 1.0)
                 for next_query in coverage.next_queries
             )
+            second_actions.extend(
+                SearchAction("local_tfidf", next_query, max(20, int(self.planner.per_query_top_k * 0.8)), 0.9)
+                for next_query in coverage.next_queries
+            )
             all_candidates.extend(self._run_actions(second_actions))
             actions_executed += len(second_actions)
             ranked = self._rank(all_candidates, parsed, query=query, top_k=top_k, model_events=model_events)
