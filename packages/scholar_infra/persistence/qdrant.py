@@ -9,6 +9,11 @@ import uuid
 import zlib
 from typing import Any
 
+from packages.scholar_core.retrieval.weighted_query import (
+    sparse_document_feature_map,
+    weighted_sparse_query_feature_map,
+)
+
 
 POINT_NAMESPACE = uuid.UUID("6ed3b6e7-7d4e-4456-95f8-9e98a9de4ac0")
 
@@ -56,9 +61,19 @@ class QdrantClient:
             return {"result": True, "missing": True}
         return self.request("DELETE", f"/collections/{name}")
 
-    def create_collection(self, name: str, vector_size: int, distance: str = "Cosine") -> Any:
+    def create_collection(
+        self,
+        name: str,
+        vector_size: int,
+        distance: str = "Cosine",
+        *,
+        vector_name: str = "",
+    ) -> Any:
+        vectors: Any = {"size": vector_size, "distance": distance}
+        if vector_name:
+            vectors = {vector_name: vectors}
         body = {
-            "vectors": {"size": vector_size, "distance": distance},
+            "vectors": vectors,
             "optimizers_config": {"default_segment_number": 2},
         }
         return self.request("PUT", f"/collections/{name}", body)
@@ -100,7 +115,7 @@ class QdrantClient:
         sparse_vector_name: str = "text",
         top_k: int = 20,
     ) -> list[dict[str, Any]]:
-        vector = lexical_sparse_vector(query_text, vector_size)
+        vector = lexical_sparse_query_vector(query_text, vector_size)
         body = {
             "vector": {"name": sparse_vector_name, "vector": vector},
             "limit": top_k,
@@ -110,8 +125,35 @@ class QdrantClient:
         result = self.request("POST", f"/collections/{collection}/points/search", body)
         return (result or {}).get("result") or []
 
+    def search_dense(
+        self,
+        collection: str,
+        vector: list[float],
+        *,
+        vector_name: str = "",
+        top_k: int = 20,
+    ) -> list[dict[str, Any]]:
+        query_vector: Any = vector
+        if vector_name:
+            query_vector = {"name": vector_name, "vector": vector}
+        body = {
+            "vector": query_vector,
+            "limit": top_k,
+            "with_payload": True,
+            "with_vector": False,
+        }
+        result = self.request("POST", f"/collections/{collection}/points/search", body)
+        return (result or {}).get("result") or []
+
+
+def lexical_sparse_query_vector(text: str, dimensions: int) -> dict[str, list[int] | list[float]]:
+    return _sparse_feature_vector(weighted_sparse_query_feature_map(text), dimensions)
+
 
 def lexical_sparse_vector(text: str, dimensions: int) -> dict[str, list[int] | list[float]]:
+    features = sparse_document_feature_map(text)
+    if features:
+        return _sparse_feature_vector(features, dimensions)
     weights: dict[int, float] = {}
     for token in str(text or "").lower().split():
         clean = "".join(ch for ch in token if ch.isalnum() or ch in "-_")
@@ -119,6 +161,17 @@ def lexical_sparse_vector(text: str, dimensions: int) -> dict[str, list[int] | l
             continue
         index = zlib.crc32(clean.encode("utf-8")) % dimensions
         weights[index] = weights.get(index, 0.0) + 1.0
+    indices = sorted(weights)
+    return {"indices": indices, "values": [round(weights[index], 6) for index in indices]}
+
+
+def _sparse_feature_vector(features: dict[str, float], dimensions: int) -> dict[str, list[int] | list[float]]:
+    weights: dict[int, float] = {}
+    for feature, value in features.items():
+        if not feature or value <= 0:
+            continue
+        index = zlib.crc32(feature.encode("utf-8")) % dimensions
+        weights[index] = weights.get(index, 0.0) + float(value)
     indices = sorted(weights)
     return {"indices": indices, "values": [round(weights[index], 6) for index in indices]}
 
@@ -142,3 +195,30 @@ def qdrant_point_from_chunk(
             "token_estimate": row.get("token_estimate"),
         },
     }
+
+
+def qdrant_point_from_sparse_paper(
+    row: dict[str, Any],
+    *,
+    vector_size: int,
+    sparse_vector_name: str = "text",
+) -> dict[str, Any]:
+    text = _paper_sparse_text(row)
+    return {
+        "id": str(uuid.uuid5(POINT_NAMESPACE, f"paper_sparse:{row['paper_id']}")),
+        "vector": {sparse_vector_name: lexical_sparse_vector(text, vector_size)},
+        "payload": {
+            "paper_id": row["paper_id"],
+            "title": row.get("title") or "",
+            "year": row.get("year"),
+            "venue": row.get("venue"),
+            "source": row.get("source"),
+            "text_type": "title_abs_sparse",
+        },
+    }
+
+
+def _paper_sparse_text(row: dict[str, Any]) -> str:
+    title = str(row.get("title") or "").strip()
+    abstract = str(row.get("abstract") or "").strip()
+    return f"{title}\n{title}\n{abstract[:2200]}"

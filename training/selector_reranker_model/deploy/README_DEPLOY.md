@@ -9,6 +9,21 @@ Remote layout on cu05:
   k8s/        # Kubernetes manifests
 ```
 
+Current running model verified on 2026-07-04:
+
+```text
+Deployment: selector-reranker
+Pod: selector-reranker-68646cfd46-jw6ng
+Node: 11.11.11.5
+Host model path: /data/csp/selector-reranker/model
+Container MODEL_DIR: /models/selector-reranker
+Threshold: 0.0006931035313755274
+Model files mtime: 2026-07-03 16:18
+Dev accuracy: 0.8813559322033898
+Dev F1: 0.8880994671403197
+Average precision: 0.9638932054125722
+```
+
 Build image on cu05:
 
 ```bash

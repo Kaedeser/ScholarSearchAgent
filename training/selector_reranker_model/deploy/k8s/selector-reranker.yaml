@@ -36,7 +36,7 @@ spec:
             - name: BATCH_SIZE
               value: "16"
             - name: THRESHOLD
-              value: "0.991881787776947"
+              value: "0.0006931035313755274"
             - name: USE_FP16
               value: "false"
           resources:

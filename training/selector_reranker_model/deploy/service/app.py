@@ -20,7 +20,7 @@ MODEL_DIR = Path(os.environ.get("MODEL_DIR", "/models/selector-reranker"))
 PORT = int(os.environ.get("PORT", "8000"))
 MAX_LENGTH = int(os.environ.get("MAX_LENGTH", "512"))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "16"))
-THRESHOLD = float(os.environ.get("THRESHOLD", "0.991881787776947"))
+THRESHOLD = float(os.environ.get("THRESHOLD", "0.0006931035313755274"))
 USE_FP16 = os.environ.get("USE_FP16", "false").lower() in {"1", "true", "yes"}
 
 TOKENIZER: Any | None = None

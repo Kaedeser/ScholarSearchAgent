@@ -1,6 +1,6 @@
 # ScholarSearchAgent 三个模型用途与访问地址汇总
 
-整理时间：2026-06-24
+整理时间：2026-07-04
 范围：`ScholarSearchAgent/train` 下的 `query_intent_model`、`selector_reranker_model`、`crawler_strategy_model`。
 
 > 说明：以下访问地址均来自各模型目录内现有部署文档，属于 cu05/K8s `default` 命名空间暴露的 NodePort 服务。若服务不可达，优先检查 cu05 节点、K8s Pod/Service 状态以及当前网络是否能访问 `10.99.24.182`。
@@ -13,12 +13,12 @@
 | `selector_reranker_model` | Selector Reranker Service | 对召回得到的候选论文进行相关性重排，输出论文相关性分数和排序结果。 | `http://10.99.24.182:32082` | `GET /health`、`POST /rerank` |
 | `crawler_strategy_model` | Crawler Strategy Service | 根据问题、论文标题/摘要和章节列表，预测下一步应展开阅读哪些 section。 | `http://10.99.24.182:32183` | `GET /health`、`POST /predict`、`POST /generate` |
 
-健康检查结果（2026-06-24 实测）：
+健康检查结果：
 
 | 服务 | `/health` 状态 | 返回摘要 |
 | --- | --- | --- |
 | Query Intent Service | 200 OK | `{"status": "ok", "service": "query-intent-service"}` |
-| Selector Reranker Service | 200 OK | `{"status": "ok", "model_loaded": true, "device": "cuda"}` |
+| Selector Reranker Service | 200 OK，2026-07-04 实测 | `{"status": "ok", "model_loaded": true, "device": "cuda", "threshold": 0.0006931035313755274}` |
 | Crawler Strategy Service | 200 OK | `{"status": "ok", "model_loaded": true}` |
 
 ## 2. Query Intent Model
@@ -103,13 +103,22 @@ query_intent_model/artifacts/remote_model_manifest.json
 - 按 `rerank_score` 从高到低重排候选论文。
 - 结合阈值判断候选论文是否相关。
 
-当前推荐阈值：
+当前运行阈值：
 
 ```text
-0.991881787776947
+0.0006931035313755274
 ```
 
 如果只用于排序，可以不使用阈值，直接按分数降序排列。
+
+当前主检索链路不会直接把完整候选池全部送入 reranker，而是使用：
+
+```text
+SELECTOR_RERANKER_POOL_LIMIT=500
+SELECTOR_RERANKER_CANDIDATE_LIMIT=50
+```
+
+规则预筛层会先从最多 500 个候选中结合约束覆盖、多源支持、title/chunk/dense/sparse/graph 信号收束到 50 个，再调用 `/rerank` 做精排。
 
 ### 访问地址与接口
 
@@ -153,22 +162,29 @@ Container port: 8000
 NodePort: 32082
 Remote deploy root: /data/csp/selector-reranker
 Remote model mount: /data/csp/selector-reranker/model
+Container MODEL_DIR: /models/selector-reranker
+Running pod verified: selector-reranker-68646cfd46-jw6ng on 11.11.11.5
+Last restart annotation: 2026-07-04T00:35:07+08:00
 ```
 
-模型路线：
+当前运行模型：
 
 ```text
 Framework: sentence-transformers CrossEncoder
-Final base: BAAI/bge-reranker-large
-Local final model: selector_reranker_model/outputs/best_selector_reranker_model
-Remote final training model: /home/model_train/selector_reranker_model/outputs/bge-large-continue-mean-ep1-lr2e-6-bs4/final
+Remote active model path: /data/csp/selector-reranker/model
+Container active model path: /models/selector-reranker
+Model files mtime: 2026-07-03 16:18
+Training base recorded in metrics: /data/csp/selector-reranker/model
+Selection metric: f1
+Train rows: 35154
+Dev rows: 1593
 ```
 
-最终交付模型关键指标：
+当前运行模型关键指标：
 
-| Accuracy | F1 | Precision | Recall | Average Precision |
+| Accuracy | F1 | Precision@F1 threshold | Recall@F1 threshold | Average Precision |
 | ---: | ---: | ---: | ---: | ---: |
-| 80.50% | 80.00% | 80.41% | 79.59% | 82.51% |
+| 88.14% | 88.81% | 95.79% | 82.78% | 96.39% |
 
 ## 4. Crawler Strategy Model
 

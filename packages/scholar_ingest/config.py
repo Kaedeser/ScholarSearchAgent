@@ -28,6 +28,27 @@ def _config_value(values: Mapping[str, str], name: str, default: str = "") -> st
     return os.getenv(name) or values.get(name) or default
 
 
+def _config_bool(values: Mapping[str, str], name: str, default: bool = False) -> bool:
+    raw = _config_value(values, name, "true" if default else "false").strip().lower()
+    return raw in {"1", "true", "yes", "y", "on"}
+
+
+def _config_int(values: Mapping[str, str], name: str, default: int) -> int:
+    raw = _config_value(values, name, str(default))
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _config_float(values: Mapping[str, str], name: str, default: float) -> float:
+    raw = _config_value(values, name, str(default))
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 def _config_path(values: Mapping[str, str], name: str, default: Path, *, base_dir: Path) -> Path:
     value = os.getenv(name) or values.get(name)
     if not value:
@@ -60,6 +81,28 @@ class Settings:
     qdrant_collection: str
     qdrant_sparse_vector_name: str
     qdrant_sparse_vector_size: int
+    qdrant_dense_paper_enabled: bool
+    qdrant_dense_paper_collection: str
+    qdrant_sparse_paper_enabled: bool
+    qdrant_sparse_paper_collection: str
+    qdrant_dense_vector_name: str
+    qdrant_dense_vector_size: int
+    dense_embedding_backend: str
+    dense_embedding_model: str
+    dense_embedding_device: str
+    dense_embedding_base_url: str
+    dense_embedding_api_key: str
+    dense_embedding_timeout_sec: float
+    dense_embedding_verify_ssl: bool
+    neo4j_retrieval_enabled: bool
+    neo4j_http_url: str
+    neo4j_user: str
+    neo4j_password: str
+    neo4j_database: str
+    neo4j_graph_name: str
+    neo4j_max_seed_papers: int
+    neo4j_max_neighbors: int
+    neo4j_min_concept_confidence: float
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -100,7 +143,49 @@ class Settings:
             qdrant_api_key=_config_value(config_values, "QDRANT_API_KEY", ""),
             qdrant_collection=_config_value(config_values, "QDRANT_COLLECTION", "saiti3_paper_chunks_v1"),
             qdrant_sparse_vector_name=_config_value(config_values, "QDRANT_SPARSE_VECTOR_NAME", "text"),
-            qdrant_sparse_vector_size=int(_config_value(config_values, "QDRANT_SPARSE_VECTOR_SIZE", "65536")),
+            qdrant_sparse_vector_size=_config_int(config_values, "QDRANT_SPARSE_VECTOR_SIZE", 65536),
+            qdrant_dense_paper_enabled=_config_bool(config_values, "QDRANT_DENSE_PAPER_ENABLED", False),
+            qdrant_dense_paper_collection=_config_value(
+                config_values,
+                "QDRANT_DENSE_PAPER_COLLECTION",
+                "saiti3_papers_dense_v1",
+            ),
+            qdrant_sparse_paper_enabled=_config_bool(config_values, "QDRANT_SPARSE_PAPER_ENABLED", False),
+            qdrant_sparse_paper_collection=_config_value(
+                config_values,
+                "QDRANT_SPARSE_PAPER_COLLECTION",
+                "saiti3_papers_sparse_v1",
+            ),
+            qdrant_dense_vector_name=_config_value(config_values, "QDRANT_DENSE_VECTOR_NAME", ""),
+            qdrant_dense_vector_size=max(1, _config_int(config_values, "QDRANT_DENSE_VECTOR_SIZE", 768)),
+            dense_embedding_backend=_config_value(config_values, "DENSE_EMBEDDING_BACKEND", "sentence_transformers"),
+            dense_embedding_model=_config_value(config_values, "DENSE_EMBEDDING_MODEL", ""),
+            dense_embedding_device=_config_value(config_values, "DENSE_EMBEDDING_DEVICE", ""),
+            dense_embedding_base_url=_config_value(
+                config_values,
+                "DENSE_EMBEDDING_BASE_URL",
+                _config_value(config_values, "GPUSTACK_BASE_URL", ""),
+            ).rstrip("/"),
+            dense_embedding_api_key=_config_value(
+                config_values,
+                "DENSE_EMBEDDING_API_KEY",
+                _config_value(config_values, "GPUSTACK_API_KEY", ""),
+            ),
+            dense_embedding_timeout_sec=max(0.1, _config_float(config_values, "DENSE_EMBEDDING_TIMEOUT_SEC", 120.0)),
+            dense_embedding_verify_ssl=_config_bool(config_values, "DENSE_EMBEDDING_VERIFY_SSL", True),
+            neo4j_http_url=_config_value(config_values, "NEO4J_HTTP_URL", "http://10.99.24.182:30474").rstrip("/"),
+            neo4j_user=_config_value(config_values, "NEO4J_USER", "neo4j"),
+            neo4j_password=_config_value(config_values, "NEO4J_PASSWORD", ""),
+            neo4j_database=_config_value(config_values, "NEO4J_DATABASE", "neo4j"),
+            neo4j_graph_name=_config_value(config_values, "NEO4J_GRAPH_NAME", "paper"),
+            neo4j_max_seed_papers=max(1, _config_int(config_values, "NEO4J_MAX_SEED_PAPERS", 3)),
+            neo4j_max_neighbors=max(1, _config_int(config_values, "NEO4J_MAX_NEIGHBORS", 30)),
+            neo4j_min_concept_confidence=max(0.0, min(1.0, _config_float(config_values, "NEO4J_MIN_CONCEPT_CONFIDENCE", 0.65))),
+            neo4j_retrieval_enabled=_config_bool(
+                config_values,
+                "NEO4J_RETRIEVAL_ENABLED",
+                False,
+            ),
         )
 
 

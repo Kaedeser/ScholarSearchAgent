@@ -95,6 +95,25 @@ CONCEPT_HINTS = {
     "video",
 }
 
+ALIAS_HINTS = CONCEPT_HINTS | {
+    "adapter",
+    "agent",
+    "agents",
+    "benchmark",
+    "control",
+    "data",
+    "deblurring",
+    "factuality",
+    "matching",
+    "navigation",
+    "prompting",
+    "pruning",
+    "reasoning",
+    "rendering",
+    "token",
+    "tokens",
+}
+
 
 def read_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
@@ -252,6 +271,50 @@ def extract_concepts(*texts: str, limit: int = 12) -> list[dict[str, Any]]:
             }
         )
     return concepts
+
+
+def extract_aliases(paper: dict[str, Any], concepts: list[dict[str, Any]], *, limit: int = 16) -> list[dict[str, Any]]:
+    aliases: dict[str, dict[str, Any]] = {}
+    for concept in concepts:
+        name = str(concept.get("name") or "")
+        normalized = normalize_title(name)
+        if normalized:
+            aliases[normalized] = {
+                "alias_id": stable_hash("alias", normalized),
+                "name": name,
+                "normalized_name": normalized,
+                "target_concept_id": concept.get("concept_id"),
+                "alias_type": concept.get("concept_type") or "concept",
+                "confidence": 0.86,
+                "source": "concept_phrase",
+            }
+    title = str(paper.get("title") or "")
+    abstract = str(paper.get("abstract") or "")
+    tokens = [token.lower() for token in TOKEN_RE.findall(f"{title}. {abstract[:800]}")]
+    tokens = [token for token in tokens if token not in STOPWORDS and len(token) > 2]
+    for size in (5, 4, 3, 2):
+        for index in range(0, max(0, len(tokens) - size + 1)):
+            phrase_tokens = tokens[index : index + size]
+            if not any(token in ALIAS_HINTS for token in phrase_tokens):
+                continue
+            phrase = " ".join(phrase_tokens)
+            normalized = normalize_title(phrase)
+            if not normalized or normalized in aliases:
+                continue
+            ctype = concept_type(phrase)
+            concept_id = stable_hash(f"concept:{ctype}", phrase)
+            aliases[normalized] = {
+                "alias_id": stable_hash("alias", normalized),
+                "name": phrase,
+                "normalized_name": normalized,
+                "target_concept_id": concept_id,
+                "alias_type": ctype,
+                "confidence": 0.72 if size <= 3 else 0.78,
+                "source": "title_abstract_phrase",
+            }
+            if len(aliases) >= limit:
+                return list(aliases.values())[:limit]
+    return list(aliases.values())[:limit]
 
 
 class Neo4jError(RuntimeError):
@@ -604,7 +667,10 @@ def create_constraints(neo: Neo4jHTTP, graph_name: str) -> None:
         "CREATE CONSTRAINT section_id IF NOT EXISTS FOR (s:Section) REQUIRE s.section_id IS UNIQUE",
         "CREATE CONSTRAINT reference_mention_id IF NOT EXISTS FOR (r:ReferenceMention) REQUIRE r.mention_id IS UNIQUE",
         "CREATE CONSTRAINT concept_id IF NOT EXISTS FOR (c:Concept) REQUIRE c.concept_id IS UNIQUE",
+        "CREATE CONSTRAINT alias_id IF NOT EXISTS FOR (a:Alias) REQUIRE a.alias_id IS UNIQUE",
         "CREATE CONSTRAINT chunk_id IF NOT EXISTS FOR (ch:Chunk) REQUIRE ch.chunk_id IS UNIQUE",
+        "CREATE INDEX alias_normalized_name IF NOT EXISTS FOR (a:Alias) ON (a.normalized_name)",
+        "CREATE INDEX concept_id_lookup IF NOT EXISTS FOR (c:Concept) ON (c.concept_id)",
         "MERGE (g:Graph {name: $graph_name}) SET g.kind='paper_kg', g.updated_at=datetime()",
     ]
     for statement in statements:
@@ -738,6 +804,34 @@ def import_concepts(
             r.updated_at = datetime()
         """
         neo.run(statement_edges, {"rows": paper_concepts, "graph_name": graph_name})
+
+
+def import_aliases(neo: Neo4jHTTP, aliases: list[dict[str, Any]], graph_name: str) -> None:
+    if not aliases:
+        return
+    statement = """
+    UNWIND $rows AS row
+    MERGE (c:Concept {concept_id: row.target_concept_id})
+    ON CREATE SET c.name = row.name,
+        c.normalized_name = row.normalized_name,
+        c.concept_type = row.alias_type
+    SET c.graph_name = $graph_name,
+        c.updated_at = datetime()
+    MERGE (a:Alias {alias_id: row.alias_id})
+    SET a.graph_name = $graph_name,
+        a.name = row.name,
+        a.normalized_name = row.normalized_name,
+        a.alias_type = row.alias_type,
+        a.confidence = row.confidence,
+        a.source = row.source,
+        a.updated_at = datetime()
+    MERGE (a)-[r:ALIAS_OF]->(c)
+    SET r.graph_name = $graph_name,
+        r.confidence = row.confidence,
+        r.source = row.source,
+        r.updated_at = datetime()
+    """
+    neo.run(statement, {"rows": aliases, "graph_name": graph_name})
 
 
 def prepare_chunk_row(chunk: dict[str, Any], text_chars: int) -> dict[str, Any]:
@@ -1083,6 +1177,7 @@ def build_graph(args: argparse.Namespace) -> dict[str, Any]:
         "resolved_references": 0,
         "concept_rows": 0,
         "paper_concept_edges": 0,
+        "alias_rows": 0,
         "es_papers": es_count(args, args.papers_index),
         "es_chunks": es_count(args, args.chunks_index),
     }
@@ -1092,18 +1187,21 @@ def build_graph(args: argparse.Namespace) -> dict[str, Any]:
     reference_batch: list[dict[str, Any]] = []
     concept_batch_by_id: dict[str, dict[str, Any]] = {}
     paper_concept_batch: list[dict[str, Any]] = []
+    alias_batch_by_id: dict[str, dict[str, Any]] = {}
 
     def flush() -> None:
-        nonlocal paper_batch, section_batch, reference_batch, concept_batch_by_id, paper_concept_batch
+        nonlocal paper_batch, section_batch, reference_batch, concept_batch_by_id, paper_concept_batch, alias_batch_by_id
         import_papers(neo, paper_batch, args.graph_name)
         import_sections(neo, section_batch, args.graph_name)
         import_references_and_edges(neo, reference_batch, args.graph_name)
         import_concepts(neo, list(concept_batch_by_id.values()), paper_concept_batch, args.graph_name)
+        import_aliases(neo, list(alias_batch_by_id.values()), args.graph_name)
         paper_batch = []
         section_batch = []
         reference_batch = []
         concept_batch_by_id = {}
         paper_concept_batch = []
+        alias_batch_by_id = {}
 
     try:
         for paper in source_iter:
@@ -1118,6 +1216,9 @@ def build_graph(args: argparse.Namespace) -> dict[str, Any]:
             reference_batch.extend(references)
             for concept in concepts:
                 concept_batch_by_id[concept["concept_id"]] = concept
+            aliases = extract_aliases(paper_row, concepts, limit=args.aliases_per_paper)
+            for alias in aliases:
+                alias_batch_by_id[alias["alias_id"]] = alias
             paper_concept_batch.extend(paper_concepts)
 
             stats["paper_rows"] += 1
@@ -1126,6 +1227,7 @@ def build_graph(args: argparse.Namespace) -> dict[str, Any]:
             stats["resolved_references"] += sum(1 for row in references if row.get("target_paper_id"))
             stats["concept_rows"] += len(concepts)
             stats["paper_concept_edges"] += len(paper_concepts)
+            stats["alias_rows"] += len(aliases)
 
             if len(paper_batch) >= args.batch_size:
                 flush()
@@ -1142,6 +1244,7 @@ def build_graph(args: argparse.Namespace) -> dict[str, Any]:
     stats["neo4j_paper_count"] = neo.query_value("MATCH (p:Paper {graph_name: $graph_name}) RETURN count(p)", {"graph_name": args.graph_name})
     stats["neo4j_cites_count"] = neo.query_value("MATCH ()-[r:CITES {graph_name: $graph_name}]->() RETURN count(r)", {"graph_name": args.graph_name})
     stats["neo4j_concept_count"] = neo.query_value("MATCH (c:Concept {graph_name: $graph_name}) RETURN count(c)", {"graph_name": args.graph_name})
+    stats["neo4j_alias_count"] = neo.query_value("MATCH (a:Alias {graph_name: $graph_name}) RETURN count(a)", {"graph_name": args.graph_name})
     return stats
 
 
@@ -1172,6 +1275,63 @@ def build_chunks(args: argparse.Namespace) -> dict[str, Any]:
         import_chunks(neo, batch, args.graph_name)
     stats["neo4j_chunk_count"] = neo.query_value("MATCH (ch:Chunk {graph_name: $graph_name}) RETURN count(ch)", {"graph_name": args.graph_name})
     stats["neo4j_has_chunk_count"] = neo.query_value("MATCH ()-[r:HAS_CHUNK {graph_name: $graph_name}]->() RETURN count(r)", {"graph_name": args.graph_name})
+    return stats
+
+
+def build_aliases(args: argparse.Namespace) -> dict[str, Any]:
+    neo = neo4j_client(args)
+    actual_db = neo.create_database_if_possible(args.neo4j_database)
+    args.neo4j_database = actual_db
+    create_constraints(neo, args.graph_name)
+    source_iter = iter_mysql_papers(args) if args.source == "mysql" else iter_processed_papers(args)
+    stats = {
+        "neo4j_database": actual_db,
+        "paper_rows": 0,
+        "alias_rows": 0,
+        "concept_rows": 0,
+    }
+    concept_batch_by_id: dict[str, dict[str, Any]] = {}
+    paper_concept_batch: list[dict[str, Any]] = []
+    alias_batch_by_id: dict[str, dict[str, Any]] = {}
+
+    def flush() -> None:
+        nonlocal concept_batch_by_id, paper_concept_batch, alias_batch_by_id
+        import_concepts(neo, list(concept_batch_by_id.values()), paper_concept_batch, args.graph_name)
+        import_aliases(neo, list(alias_batch_by_id.values()), args.graph_name)
+        concept_batch_by_id = {}
+        paper_concept_batch = []
+        alias_batch_by_id = {}
+
+    for paper in source_iter:
+        paper_id = str(paper.get("paper_id") or "")
+        if not paper_id:
+            continue
+        paper_row = prepare_paper_row(paper, args.abstract_chars)
+        concepts = extract_concepts(str(paper_row.get("title") or ""), str(paper_row.get("abstract") or ""))
+        aliases = extract_aliases(paper_row, concepts, limit=args.aliases_per_paper)
+        for concept in concepts:
+            concept_batch_by_id[concept["concept_id"]] = concept
+            paper_concept_batch.append(
+                {
+                    "paper_id": paper_id,
+                    "concept_id": concept["concept_id"],
+                    "evidence_field": "title_abstract_alias_build",
+                    "evidence_text": f"{paper_row.get('title') or ''}. {str(paper_row.get('abstract') or '')[:220]}",
+                    "confidence": concept["confidence"],
+                    "extractor": "alias_build_rule_phrase",
+                }
+            )
+        for alias in aliases:
+            alias_batch_by_id[alias["alias_id"]] = alias
+        stats["paper_rows"] += 1
+        stats["concept_rows"] += len(concepts)
+        stats["alias_rows"] += len(aliases)
+        if len(alias_batch_by_id) >= args.batch_size:
+            flush()
+            log("Imported alias rows={alias_rows} papers={paper_rows}".format(**stats))
+    flush()
+    stats["neo4j_alias_count"] = neo.query_value("MATCH (a:Alias {graph_name: $graph_name}) RETURN count(a)", {"graph_name": args.graph_name})
+    stats["neo4j_alias_edge_count"] = neo.query_value("MATCH ()-[r:ALIAS_OF {graph_name: $graph_name}]->() RETURN count(r)", {"graph_name": args.graph_name})
     return stats
 
 
@@ -1231,6 +1391,11 @@ def cmd_build_chunks(args: argparse.Namespace) -> None:
     print(json.dumps(stats, ensure_ascii=False, indent=2))
 
 
+def cmd_build_aliases(args: argparse.Namespace) -> None:
+    stats = build_aliases(args)
+    print(json.dumps(stats, ensure_ascii=False, indent=2))
+
+
 def cmd_clear(args: argparse.Namespace) -> None:
     stats = clear_neo4j_data(args)
     print(json.dumps(stats, ensure_ascii=False, indent=2))
@@ -1265,12 +1430,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chunk-limit", type=int, default=None)
     parser.add_argument("--chunk-text-chars", type=int, default=500)
     parser.add_argument("--abstract-chars", type=int, default=4000)
+    parser.add_argument("--aliases-per-paper", type=int, default=16)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("doctor").set_defaults(func=cmd_doctor)
     subparsers.add_parser("init").set_defaults(func=cmd_init)
     subparsers.add_parser("clear").set_defaults(func=cmd_clear)
     subparsers.add_parser("build").set_defaults(func=cmd_build)
     subparsers.add_parser("build-chunks").set_defaults(func=cmd_build_chunks)
+    subparsers.add_parser("build-aliases").set_defaults(func=cmd_build_aliases)
     return parser
 
 

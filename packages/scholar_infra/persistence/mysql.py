@@ -337,6 +337,25 @@ class MySQLClient:
             return None
         return json.loads(str(row_json))
 
+    def fetch_papers(self, paper_ids: list[str]) -> dict[str, dict[str, Any]]:
+        unique_ids = [paper_id for paper_id in dict.fromkeys(str(item).strip() for item in paper_ids) if paper_id]
+        if not unique_ids:
+            return {}
+        rows: dict[str, dict[str, Any]] = {}
+        for start in range(0, len(unique_ids), 200):
+            chunk = unique_ids[start : start + 200]
+            id_sql = ",".join(sql_value(paper_id) for paper_id in chunk)
+            result = self.execute(
+                "SELECT paper_id, title, abstract, year, venue, citation_count, source "
+                f"FROM papers WHERE paper_id IN ({id_sql})"
+            )
+            for values in result.rows:
+                item = dict(zip(result.columns, values))
+                paper_id = str(item.get("paper_id") or "").strip()
+                if paper_id:
+                    rows[paper_id] = item
+        return rows
+
 
 def _read_packet(sock: socket.socket) -> tuple[int, bytes]:
     header = _recv_exact(sock, 4)

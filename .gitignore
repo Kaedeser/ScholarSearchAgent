@@ -33,6 +33,7 @@ data_ingestion_indexing/config/*.env
 *.log
 logs/
 *.pid
+.omx/
 
 # Model weights and trained checkpoints
 *.safetensors
@@ -59,8 +60,13 @@ checkpoints/
 **/outputs/
 **/logs/
 **/data_processed/
+data_ingestion_indexing/data_processed_full/
 train/**/data/
 training/**/data/
+
+# Generated evaluation/report artifacts
+reports/
+training/selector_reranker_model/TRAINING_REPOR_old.md
 
 # Third-party repository metadata nested inside vendored code
 **/.git/

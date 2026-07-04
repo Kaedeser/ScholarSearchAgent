@@ -8,11 +8,12 @@ from pathlib import Path
 
 from .config import Settings
 from .es import CHUNKS_MAPPING, PAPERS_MAPPING, ElasticsearchClient
-from .mysql import MySQLClient
+from .mysql import MySQLClient, sql_value
 from .io_utils import dump_json
 from .pasa import convert_papers, convert_queries
-from .qdrant import QdrantClient, qdrant_point_from_chunk
+from .qdrant import QdrantClient, qdrant_point_from_chunk, qdrant_point_from_dense_paper, qdrant_point_from_sparse_paper
 from .io_utils import read_jsonl
+from packages.scholar_infra.embeddings import build_dense_embedder
 
 
 def print_json(data: object) -> None:
@@ -252,6 +253,153 @@ def cmd_load_qdrant(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_load_qdrant_dense_papers(args: argparse.Namespace) -> None:
+    settings = Settings.from_env()
+    model_name = args.model or settings.dense_embedding_model
+    if not model_name:
+        raise SystemExit("--model or DENSE_EMBEDDING_MODEL is required")
+    if args.paper_shard_count < 1:
+        raise SystemExit("--paper-shard-count must be >= 1")
+    if args.paper_shard_index < 0 or args.paper_shard_index >= args.paper_shard_count:
+        raise SystemExit("--paper-shard-index must satisfy 0 <= index < count")
+
+    client = QdrantClient(settings.qdrant_url, settings.qdrant_api_key)
+    collection = args.collection or settings.qdrant_dense_paper_collection
+    vector_name = args.vector_name if args.vector_name is not None else settings.qdrant_dense_vector_name
+    if args.reset:
+        client.delete_collection(collection)
+    if not client.collection_exists(collection):
+        client.create_collection(
+            collection,
+            args.vector_size or settings.qdrant_dense_vector_size,
+            args.distance,
+            vector_name=vector_name,
+        )
+
+    try:
+        embedder = build_dense_embedder(settings, model_name=model_name, device=args.device or settings.dense_embedding_device)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+    count = 0
+    batch: list[dict[str, object]] = []
+    with MySQLClient.from_settings(settings) as mysql:
+        mysql.use_database(settings.mysql_database)
+        last_id = str(args.start_after_paper_id or "")
+        while True:
+            where_parts = [f"paper_id > {sql_value(last_id)}" if last_id else "1=1"]
+            if args.paper_shard_count > 1:
+                where_parts.append(
+                    f"MOD(CRC32(paper_id), {int(args.paper_shard_count)}) = {int(args.paper_shard_index)}"
+                )
+            if args.end_before_paper_id:
+                where_parts.append(f"paper_id < {sql_value(args.end_before_paper_id)}")
+            where = " AND ".join(where_parts)
+            sql = (
+                "SELECT paper_id, title, abstract, year, venue, source "
+                f"FROM papers WHERE {where} ORDER BY paper_id LIMIT {int(args.page_size)}"
+            )
+            result = mysql.execute(sql)
+            if not result.rows:
+                break
+            rows = [dict(zip(result.columns, values)) for values in result.rows]
+            texts = [_dense_paper_text(row) for row in rows]
+            vectors = embedder.encode_batch(texts, batch_size=args.encode_batch_size)
+            for row, vector in zip(rows, vectors):
+                batch.append(qdrant_point_from_dense_paper(row, [float(value) for value in vector], vector_name=vector_name))
+                count += 1
+                last_id = str(row["paper_id"])
+                if len(batch) >= args.batch_size:
+                    client.upsert_points(collection, batch, wait=args.wait)
+                    batch = []
+                if args.progress_every and count % args.progress_every == 0:
+                    print_json(
+                        {
+                            "event": "dense_paper_load_progress",
+                            "collection": collection,
+                            "count": count,
+                            "last_paper_id": last_id,
+                            "backend": settings.dense_embedding_backend,
+                            "model": model_name,
+                        }
+                    )
+                if args.limit is not None and count >= args.limit:
+                    break
+            if args.limit is not None and count >= args.limit:
+                break
+    if batch:
+        client.upsert_points(collection, batch, wait=args.wait)
+    print_json(
+        {
+            "collection": collection,
+            "count": count,
+            "backend": settings.dense_embedding_backend,
+            "model": model_name,
+            "start_after_paper_id": args.start_after_paper_id or "",
+            "end_before_paper_id": args.end_before_paper_id or "",
+            "paper_shard_count": args.paper_shard_count,
+            "paper_shard_index": args.paper_shard_index,
+            "last_paper_id": last_id,
+            "vector_name": vector_name,
+            "vector_size": args.vector_size or settings.qdrant_dense_vector_size,
+        }
+    )
+
+
+def cmd_load_qdrant_sparse_papers(args: argparse.Namespace) -> None:
+    settings = Settings.from_env()
+    client = QdrantClient(settings.qdrant_url, settings.qdrant_api_key)
+    collection = args.collection or settings.qdrant_sparse_paper_collection
+    sparse_name = args.sparse_vector_name or settings.qdrant_sparse_vector_name
+    vector_size = args.vector_size or settings.qdrant_sparse_vector_size
+    if args.reset:
+        client.delete_collection(collection)
+    if not client.collection_exists(collection):
+        client.create_sparse_collection(collection, sparse_name)
+
+    count = 0
+    batch: list[dict[str, object]] = []
+    with MySQLClient.from_settings(settings) as mysql:
+        mysql.use_database(settings.mysql_database)
+        last_id = ""
+        while True:
+            where = f"paper_id > {sql_value(last_id)}" if last_id else "1=1"
+            sql = (
+                "SELECT paper_id, title, abstract, year, venue, source "
+                f"FROM papers WHERE {where} ORDER BY paper_id LIMIT {int(args.page_size)}"
+            )
+            result = mysql.execute(sql)
+            if not result.rows:
+                break
+            for values in result.rows:
+                row = dict(zip(result.columns, values))
+                batch.append(
+                    qdrant_point_from_sparse_paper(
+                        row,
+                        vector_size=vector_size,
+                        sparse_vector_name=sparse_name,
+                    )
+                )
+                count += 1
+                last_id = str(row["paper_id"])
+                if len(batch) >= args.batch_size:
+                    client.upsert_points(collection, batch, wait=args.wait)
+                    batch = []
+                if args.limit is not None and count >= args.limit:
+                    break
+            if args.limit is not None and count >= args.limit:
+                break
+    if batch:
+        client.upsert_points(collection, batch, wait=args.wait)
+    print_json(
+        {
+            "collection": collection,
+            "count": count,
+            "vector_size": vector_size,
+            "sparse_vector_name": sparse_name,
+        }
+    )
+
+
 def cmd_init_all(args: argparse.Namespace) -> None:
     settings = Settings.from_env()
     schema_path = settings.module_root / "sql" / "schema.sql"
@@ -306,6 +454,10 @@ def cmd_verify_all(args: argparse.Namespace) -> None:
     try:
         qdrant_client = QdrantClient(settings.qdrant_url, settings.qdrant_api_key)
         report["qdrant"] = qdrant_client.collection(settings.qdrant_collection)
+        try:
+            report["qdrant_dense_papers"] = qdrant_client.collection(settings.qdrant_dense_paper_collection)
+        except Exception as exc:
+            report["qdrant_dense_papers"] = {"error": str(exc)}
     except Exception as exc:
         report["qdrant"] = {"error": str(exc)}
     print_json(report)
@@ -336,6 +488,19 @@ def cmd_search_qdrant(args: argparse.Namespace) -> None:
         top_k=args.top_k,
     )
     print_json(hits)
+
+
+def _dense_paper_text(row: dict[str, object]) -> str:
+    title = str(row.get("title") or "").strip()
+    abstract = str(row.get("abstract") or "").strip()
+    venue = str(row.get("venue") or "").strip()
+    year = str(row.get("year") or "").strip()
+    parts = [f"title: {title}"]
+    if venue or year:
+        parts.append(f"metadata: {venue} {year}".strip())
+    if abstract:
+        parts.append(f"abstract: {abstract[:2200]}")
+    return "\n".join(parts)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -400,6 +565,45 @@ def build_parser() -> argparse.ArgumentParser:
     load_qdrant.add_argument("--no-wait", dest="wait", action="store_false")
     load_qdrant.set_defaults(wait=True)
     load_qdrant.set_defaults(func=cmd_load_qdrant)
+
+    load_dense_papers = subparsers.add_parser(
+        "load-qdrant-dense-papers",
+        help="Embed paper title+abstract rows and load a dense Qdrant paper collection",
+    )
+    load_dense_papers.add_argument("--collection", default=None)
+    load_dense_papers.add_argument("--model", default=None)
+    load_dense_papers.add_argument("--device", default=None)
+    load_dense_papers.add_argument("--vector-name", default=None)
+    load_dense_papers.add_argument("--vector-size", type=int, default=None)
+    load_dense_papers.add_argument("--distance", choices=("Cosine", "Dot", "Euclid"), default="Cosine")
+    load_dense_papers.add_argument("--page-size", type=int, default=512)
+    load_dense_papers.add_argument("--batch-size", type=int, default=512)
+    load_dense_papers.add_argument("--encode-batch-size", type=int, default=32)
+    load_dense_papers.add_argument("--limit", type=int, default=None)
+    load_dense_papers.add_argument("--start-after-paper-id", default="")
+    load_dense_papers.add_argument("--end-before-paper-id", default="")
+    load_dense_papers.add_argument("--paper-shard-count", type=int, default=1)
+    load_dense_papers.add_argument("--paper-shard-index", type=int, default=0)
+    load_dense_papers.add_argument("--progress-every", type=int, default=5000)
+    load_dense_papers.add_argument("--reset", action="store_true")
+    load_dense_papers.add_argument("--no-wait", dest="wait", action="store_false")
+    load_dense_papers.set_defaults(wait=True)
+    load_dense_papers.set_defaults(func=cmd_load_qdrant_dense_papers)
+
+    load_sparse_papers = subparsers.add_parser(
+        "load-qdrant-sparse-papers",
+        help="Load paper title+abstract sparse vectors into a Qdrant paper collection",
+    )
+    load_sparse_papers.add_argument("--collection", default=None)
+    load_sparse_papers.add_argument("--sparse-vector-name", default=None)
+    load_sparse_papers.add_argument("--vector-size", type=int, default=None)
+    load_sparse_papers.add_argument("--page-size", type=int, default=1024)
+    load_sparse_papers.add_argument("--batch-size", type=int, default=1024)
+    load_sparse_papers.add_argument("--limit", type=int, default=None)
+    load_sparse_papers.add_argument("--reset", action="store_true")
+    load_sparse_papers.add_argument("--no-wait", dest="wait", action="store_false")
+    load_sparse_papers.set_defaults(wait=True)
+    load_sparse_papers.set_defaults(func=cmd_load_qdrant_sparse_papers)
 
     init_all = subparsers.add_parser("init-all", help="Initialize MySQL, Elasticsearch and Qdrant")
     init_all.add_argument("--reset", action="store_true", help="Drop/recreate all configured stores")

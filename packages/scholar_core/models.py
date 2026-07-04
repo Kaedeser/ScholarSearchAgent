@@ -44,7 +44,7 @@ class SearchPlan:
     round: int
     search_actions: list[SearchAction]
     expand_citations_for: list[str]
-    budget: dict[str, int]
+    budget: dict[str, Any]
 
 
 @dataclass

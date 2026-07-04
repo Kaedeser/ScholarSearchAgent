@@ -50,6 +50,20 @@ class CandidateNormalizer:
 
 def _merge_metadata(target: dict, source: dict) -> None:
     for key, value in source.items():
+        if key in {"source_ranks", "source_weights"} and isinstance(value, dict):
+            merged = target.setdefault(key, {})
+            if isinstance(merged, dict):
+                for source_key, source_value in value.items():
+                    if key == "source_ranks":
+                        try:
+                            existing = int(merged.get(source_key, source_value))
+                            incoming = int(source_value)
+                            merged[source_key] = min(existing, incoming)
+                        except (TypeError, ValueError):
+                            merged.setdefault(source_key, source_value)
+                    else:
+                        merged[source_key] = max(float(merged.get(source_key, 0.0) or 0.0), float(source_value or 0.0))
+            continue
         if key == "section_title" and value:
             section_titles = target.setdefault("section_titles", [])
             if value not in section_titles:

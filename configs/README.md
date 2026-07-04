@@ -68,7 +68,8 @@ QUERY_INTENT_MODE=auto
 
 SELECTOR_RERANKER_ENABLED=true
 SELECTOR_RERANKER_SERVICE_URL=http://10.99.24.182:32082
-SELECTOR_RERANKER_CANDIDATE_LIMIT=100
+SELECTOR_RERANKER_POOL_LIMIT=500
+SELECTOR_RERANKER_CANDIDATE_LIMIT=50
 
 CRAWLER_STRATEGY_ENABLED=true
 CRAWLER_STRATEGY_SERVICE_URL=http://10.99.24.182:32183
@@ -78,7 +79,7 @@ CRAWLER_STRATEGY_TOP_N=3
 模型接入位置：
 
 - Query Intent：检索前判断是否为论文检索，并把 intent 标签注入解析结果。
-- Selector Reranker：候选归一和规则排序后，对候选论文进行 CrossEncoder 重排。
+- Selector Reranker：候选归一和规则排序后，先用规则预筛把候选池收束，再对保留候选进行 CrossEncoder 重排。
 - Crawler Strategy：最终 topN 论文写入 `metadata.crawler_strategy`，记录是否继续展开 section。
 
 离线调试时可以临时关闭：
