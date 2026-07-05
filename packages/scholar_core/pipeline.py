@@ -27,6 +27,9 @@ from packages.scholar_core.text import tokenize
 
 
 SECTION_RE = re.compile(r"\bSection:\s*([^\n]+)", re.IGNORECASE)
+DEFAULT_SELECTOR_POOL_LIMIT = 500
+DEFAULT_SELECTOR_CANDIDATE_LIMIT = 120
+DEFAULT_SELECTOR_PROTECTED_HEAD = 0
 
 
 class SearchPipeline:
@@ -273,7 +276,11 @@ class SearchPipeline:
                         **metadata,
                     }
                 )
-                ranked = _merge_reranked_head(reranked, ranked)
+                ranked = _merge_reranked_head(
+                    reranked,
+                    ranked,
+                    protected_head=_selector_protected_head(self.model_services, top_k),
+                )
             except ModelServiceError as exc:
                 model_events["errors"].append({"service": "selector_reranker", "error": str(exc)})
         ranked = _diversify_ranked(ranked, parsed, top_k=top_k)
@@ -516,14 +523,30 @@ def _diversify_ranked(candidates: list[Candidate], intent: QueryIntent, *, top_k
     return selected + pool
 
 
-def _merge_reranked_head(reranked: list[Candidate], original_pool: list[Candidate]) -> list[Candidate]:
-    selected_ids = {candidate.canonical_id or candidate.paper_id for candidate in reranked}
-    remainder = [
-        candidate
-        for candidate in original_pool
-        if (candidate.canonical_id or candidate.paper_id) not in selected_ids
-    ]
-    return reranked + remainder
+def _merge_reranked_head(
+    reranked: list[Candidate],
+    original_pool: list[Candidate],
+    *,
+    protected_head: int = 0,
+) -> list[Candidate]:
+    merged: list[Candidate] = []
+    selected_ids: set[str] = set()
+
+    def add(candidate: Candidate) -> bool:
+        paper_id = candidate.canonical_id or candidate.paper_id
+        if not paper_id or paper_id in selected_ids:
+            return False
+        selected_ids.add(paper_id)
+        merged.append(candidate)
+        return True
+
+    for candidate in original_pool[: max(0, protected_head)]:
+        add(candidate)
+    for candidate in reranked:
+        add(candidate)
+    for candidate in original_pool:
+        add(candidate)
+    return merged
 
 
 def _source_rank_backfill(candidates: list[Candidate], intent: QueryIntent, *, top_k: int) -> list[Candidate]:
@@ -729,13 +752,24 @@ def _safe_int(value: Any) -> int:
 
 
 def _selector_pool_limit(model_services: ModelServicesPort) -> int:
-    raw_limit = _safe_int(getattr(model_services, "selector_pool_limit", 500)) or 500
+    raw_limit = (
+        _safe_int(getattr(model_services, "selector_pool_limit", DEFAULT_SELECTOR_POOL_LIMIT))
+        or DEFAULT_SELECTOR_POOL_LIMIT
+    )
     return max(1, raw_limit)
 
 
 def _selector_candidate_limit(model_services: ModelServicesPort) -> int:
-    raw_limit = _safe_int(getattr(model_services, "selector_candidate_limit", 50)) or 50
+    raw_limit = (
+        _safe_int(getattr(model_services, "selector_candidate_limit", DEFAULT_SELECTOR_CANDIDATE_LIMIT))
+        or DEFAULT_SELECTOR_CANDIDATE_LIMIT
+    )
     return max(1, raw_limit)
+
+
+def _selector_protected_head(model_services: ModelServicesPort, top_k: int) -> int:
+    raw_limit = _safe_int(getattr(model_services, "selector_protected_head", DEFAULT_SELECTOR_PROTECTED_HEAD))
+    return min(max(0, raw_limit), max(0, top_k))
 
 
 def _locator_intent(intent: QueryIntent) -> bool:

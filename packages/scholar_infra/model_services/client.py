@@ -286,6 +286,7 @@ class ModelServices:
         crawler_strategy: CrawlerStrategyServiceClient | None,
         selector_candidate_limit: int,
         selector_pool_limit: int,
+        selector_protected_head: int,
         crawler_top_n: int,
     ) -> None:
         self.query_intent = query_intent
@@ -294,6 +295,7 @@ class ModelServices:
         self.crawler_strategy = crawler_strategy
         self.selector_candidate_limit = selector_candidate_limit
         self.selector_pool_limit = selector_pool_limit
+        self.selector_protected_head = selector_protected_head
         self.crawler_top_n = crawler_top_n
 
     @classmethod
@@ -306,6 +308,7 @@ class ModelServices:
                 crawler_strategy=None,
                 selector_candidate_limit=settings.selector_reranker_candidate_limit,
                 selector_pool_limit=settings.selector_reranker_pool_limit,
+                selector_protected_head=settings.selector_reranker_protected_head,
                 crawler_top_n=0,
             )
         return cls(
@@ -342,6 +345,7 @@ class ModelServices:
             else None,
             selector_candidate_limit=settings.selector_reranker_candidate_limit,
             selector_pool_limit=settings.selector_reranker_pool_limit,
+            selector_protected_head=settings.selector_reranker_protected_head,
             crawler_top_n=settings.crawler_strategy_top_n,
         )
 

@@ -68,6 +68,7 @@ class ModelServiceSettings:
     selector_reranker_url: str
     selector_reranker_candidate_limit: int
     selector_reranker_pool_limit: int
+    selector_reranker_protected_head: int
     crawler_strategy_enabled: bool
     crawler_strategy_url: str
     crawler_strategy_top_n: int
@@ -148,11 +149,15 @@ class ScholarSearchSettings:
                 ).rstrip("/"),
                 selector_reranker_candidate_limit=max(
                     1,
-                    _config_int(config_values, "SELECTOR_RERANKER_CANDIDATE_LIMIT", 50),
+                    _config_int(config_values, "SELECTOR_RERANKER_CANDIDATE_LIMIT", 120),
                 ),
                 selector_reranker_pool_limit=max(
                     1,
                     _config_int(config_values, "SELECTOR_RERANKER_POOL_LIMIT", 500),
+                ),
+                selector_reranker_protected_head=max(
+                    0,
+                    _config_int(config_values, "SELECTOR_RERANKER_PROTECTED_HEAD", 0),
                 ),
                 crawler_strategy_enabled=_config_bool(config_values, "CRAWLER_STRATEGY_ENABLED", True),
                 crawler_strategy_url=_config_value(

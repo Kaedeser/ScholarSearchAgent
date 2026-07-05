@@ -75,6 +75,7 @@ class ModelServicesPort(Protocol):
     crawler_strategy: CrawlerStrategyPort | None
     selector_candidate_limit: int
     selector_pool_limit: int
+    selector_protected_head: int
     crawler_top_n: int
 
     def enabled_names(self) -> list[str]:
@@ -88,6 +89,7 @@ class DisabledModelServices:
     crawler_strategy: CrawlerStrategyPort | None = None
     selector_candidate_limit = 0
     selector_pool_limit = 0
+    selector_protected_head = 0
     crawler_top_n = 0
 
     def enabled_names(self) -> list[str]:
