@@ -19,27 +19,36 @@ export function ResultList({ papers, selectedPaperId, isLoading, onSelect }) {
         <EmptyState icon={BookOpenCheck} title="暂无论文" description="检索完成后会在这里显示排序结果。" compact />
       ) : (
         <div className="paper-list">
-          {papers.map((paper) => (
-            <button
-              key={`${paper.rank}-${paper.paper_id}`}
-              type="button"
-              className={`paper-row ${paper.paper_id === selectedPaperId ? "selected" : ""}`}
-              onClick={() => onSelect(paper.paper_id)}
-            >
-              <span className="rank-badge">{paper.rank}</span>
-              <span className="paper-row-main">
-                <strong>{paper.title || paper.paper_id}</strong>
-                <span className="paper-row-meta">
-                  <span>{paper.year || "未知年份"}</span>
-                  <span>{relevanceLabel(paper.relevance)}</span>
-                  <span>{sourceBadgeText(paper.sources)}</span>
+          {papers.map((paper) => {
+            const score = Number(paper.score || 0);
+            return (
+              <button
+                key={`${paper.rank}-${paper.paper_id}`}
+                type="button"
+                className={`paper-row relevance-${paper.relevance || "unknown"} ${
+                  paper.paper_id === selectedPaperId ? "selected" : ""
+                }`}
+                aria-pressed={paper.paper_id === selectedPaperId}
+                onClick={() => onSelect(paper.paper_id)}
+              >
+                <span className="rank-badge">{paper.rank}</span>
+                <span className="paper-row-main">
+                  <strong>{paper.title || paper.paper_id}</strong>
+                  <span className="paper-row-meta">
+                    <span>{paper.year || "未知年份"}</span>
+                    <span>{relevanceLabel(paper.relevance)}</span>
+                    <span>{sourceBadgeText(paper.sources)}</span>
+                  </span>
+                  <span className="paper-row-evidence">{paper.evidence?.[0] || "暂无摘要片段"}</span>
                 </span>
-                <span className="paper-row-evidence">{paper.evidence?.[0] || "暂无摘要片段"}</span>
-              </span>
-              <span className="score-pill">{Number(paper.score || 0).toFixed(3)}</span>
-              <ChevronRight size={17} className="row-chevron" />
-            </button>
-          ))}
+                <span className="score-pill">
+                  <small>score</small>
+                  {score.toFixed(3)}
+                </span>
+                <ChevronRight size={17} className="row-chevron" />
+              </button>
+            );
+          })}
         </div>
       )}
     </section>

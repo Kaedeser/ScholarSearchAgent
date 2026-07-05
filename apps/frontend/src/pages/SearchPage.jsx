@@ -56,13 +56,21 @@ export function SearchPage() {
     const papers = response?.papers || [];
     const cost = response?.cost || {};
     const coverage = response?.coverage?.coverage || {};
-    const matched = Object.values(coverage).filter((value) => value === "matched").length;
-    const total = Object.keys(coverage).length;
+    const coverageValues = Object.values(coverage);
+    const covered = coverageValues.filter((value) => ["covered", "matched"].includes(value)).length;
+    const weak = coverageValues.filter((value) => value === "weak").length;
+    const total = coverageValues.length;
     return [
-      { label: "论文", value: papers.length || 0, icon: BookOpenCheck },
-      { label: "延迟", value: formatLatency(cost.latency_sec), icon: Clock3 },
-      { label: "覆盖", value: total ? `${matched}/${total}` : "0/0", icon: Gauge },
-      { label: "后端", value: cost.backend || "-", icon: Database },
+      { label: "论文", value: papers.length || 0, hint: "候选结果", icon: BookOpenCheck, tone: "papers" },
+      { label: "延迟", value: formatLatency(cost.latency_sec), hint: "端到端", icon: Clock3, tone: "latency" },
+      {
+        label: "覆盖",
+        value: total ? `${covered + weak}/${total}` : "0/0",
+        hint: weak ? `${covered} 强 / ${weak} 弱` : "约束命中",
+        icon: Gauge,
+        tone: "coverage",
+      },
+      { label: "后端", value: cost.backend || "-", hint: "检索源", icon: Database, tone: "backend" },
     ];
   }, [response]);
 
@@ -151,6 +159,12 @@ export function SearchPage() {
               Scholar Agent
             </span>
             <h2>从问题到论文证据链</h2>
+            <p className="query-note">把自然语言研究问题拆成检索计划、约束覆盖和可追溯证据。</p>
+            <div className="query-highlights" aria-label="工作流">
+              <span>意图解析</span>
+              <span>多源召回</span>
+              <span>证据排序</span>
+            </div>
           </div>
           <SearchControls
             query={query}
@@ -236,9 +250,14 @@ export function SearchPage() {
 function MetricTile({ item }) {
   const Icon = item.icon;
   return (
-    <div className="metric-tile">
-      <Icon size={18} />
-      <span>{item.label}</span>
+    <div className={`metric-tile metric-${item.tone || "neutral"}`}>
+      <span className="metric-icon">
+        <Icon size={18} />
+      </span>
+      <span className="metric-copy">
+        <span>{item.label}</span>
+        <small>{item.hint}</small>
+      </span>
       <strong>{item.value}</strong>
     </div>
   );

@@ -10,6 +10,8 @@ export function PaperDetail({ paper }) {
 
   const arxivId = String(paper.paper_id || "").replace(/^arxiv:/i, "");
   const arxivUrl = arxivId && arxivId !== paper.paper_id ? `https://arxiv.org/abs/${arxivId}` : "";
+  const score = Number(paper.score || 0);
+  const scorePercent = Math.max(0, Math.min(100, Math.round(score * 100)));
 
   return (
     <section className="paper-detail" aria-label="论文详情">
@@ -36,6 +38,16 @@ export function PaperDetail({ paper }) {
       </div>
 
       <h3>{paper.title || paper.paper_id}</h3>
+
+      <div className="detail-score" aria-label={`综合分数 ${score.toFixed(3)}`}>
+        <div>
+          <span>综合分数</span>
+          <strong>{score.toFixed(3)}</strong>
+        </div>
+        <span className="score-track">
+          <span style={{ width: `${scorePercent}%` }} />
+        </span>
+      </div>
 
       <div className="detail-meta-grid">
         <Meta label="年份" value={paper.year || "-"} />

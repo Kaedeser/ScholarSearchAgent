@@ -20,7 +20,12 @@ export function relevanceLabel(value) {
 
 export function sourceBadgeText(values = []) {
   const items = Array.isArray(values) ? values : [];
-  return items.length ? items.join(" / ") : "-";
+  if (!items.length) {
+    return "-";
+  }
+  const labels = items.map(sourceLabel);
+  const visible = labels.slice(0, 3).join(" / ");
+  return labels.length > 3 ? `${visible} +${labels.length - 3}` : visible;
 }
 
 export function topSourceText(papers = []) {
@@ -29,5 +34,19 @@ export function topSourceText(papers = []) {
     (paper.sources || []).forEach((source) => counts.set(source, (counts.get(source) || 0) + 1));
   });
   const [source, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0] || [];
-  return source ? `${source} (${count})` : "-";
+  return source ? `${sourceLabel(source)} (${count})` : "-";
+}
+
+function sourceLabel(value) {
+  const labels = {
+    elasticsearch: "ES",
+    local_chunk_bm25: "Chunk BM25",
+    local_title_bm25: "Title BM25",
+    local_tfidf: "TF-IDF",
+    qdrant_dense_paper: "Qdrant dense",
+    qdrant_sparse_paper: "Qdrant sparse",
+    neo4j_alias: "Neo4j alias",
+    neo4j_concept: "Neo4j concept",
+  };
+  return labels[value] || String(value || "-").replaceAll("_", " ");
 }
