@@ -43,13 +43,18 @@ configs/database.env.example
 
 读取优先级为：环境变量 > `SCHOLAR_SEARCH_CONFIG` 指向的 env 文件 > `configs/database.env` > 旧兼容路径 `config/database.env` > 代码默认值。
 
-三个远端模型服务通过同一份配置启用：
+三个本地训练并部署的远端模型服务默认启用，可通过同一份配置覆盖：
 
 - Query Intent：`QUERY_INTENT_SERVICE_URL`
 - Selector Reranker：`SELECTOR_RERANKER_SERVICE_URL`
 - Crawler Strategy：`CRAWLER_STRATEGY_SERVICE_URL`
 
-离线调试可在命令中添加 `--disable-model-services`。
+外部学术搜索 API 可选启用：
+
+- Semantic Scholar：`ACADEMIC_SEARCH_ENABLED=true`、`ACADEMIC_SEARCH_PROVIDER=semantic_scholar`
+- `database` 与本地 JSONL 回退后端都可执行 Semantic Scholar 检索动作
+
+Query Rewrite 和 Dense Embedding 依赖单独的 GPUStack/OpenAI-compatible 凭据，仍按各自开关显式启用。离线调试可在命令中添加 `--disable-model-services`，一次性关闭三个训练模型服务。
 
 ## 常用命令
 
@@ -108,7 +113,7 @@ python -m pytest -q
 ## 文档
 
 - 前后端启动：[docs/operations/FRONTEND_BACKEND_STARTUP.md](docs/operations/FRONTEND_BACKEND_STARTUP.md)
-- 架构方案：[docs/architecture/PROJECT_ARCHITECTURE_PLAN.md](docs/architecture/PROJECT_ARCHITECTURE_PLAN.md)
+- 架构方案：[docs/architecture/PROJECT_ARCHITECTURE.md](docs/architecture/PROJECT_ARCHITECTURE.md)
 - 模型服务：[docs/operations/MODEL_SERVICES_SUMMARY.md](docs/operations/MODEL_SERVICES_SUMMARY.md)
 
 ## 开发约定

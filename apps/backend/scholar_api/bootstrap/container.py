@@ -38,6 +38,10 @@ def build_search_pipeline(
         per_query_top_k=per_query_top_k,
         model_services=model_services,
         backend_error=backend_error,
+        academic_search_enabled=settings.academic_search_enabled,
+        academic_search_provider=settings.academic_search_provider,
+        academic_search_query_limit=settings.academic_search_query_limit,
+        academic_search_top_k=settings.academic_search_top_k,
     )
 
 

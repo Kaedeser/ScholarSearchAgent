@@ -817,6 +817,7 @@ class FakeModelServices:
         crawler_strategy=None,
         selector_candidate_limit: int = 10,
         selector_pool_limit: int = 500,
+        selector_protected_head: int = 0,
         crawler_top_n: int = 1,
     ) -> None:
         self.query_intent = query_intent
@@ -825,6 +826,7 @@ class FakeModelServices:
         self.crawler_strategy = crawler_strategy
         self.selector_candidate_limit = selector_candidate_limit
         self.selector_pool_limit = selector_pool_limit
+        self.selector_protected_head = selector_protected_head
         self.crawler_top_n = crawler_top_n
 
     def enabled_names(self) -> list[str]:
@@ -938,6 +940,39 @@ def test_pipeline_selector_pool_limit_is_not_inflated_by_diagnostic_top_k():
     assert preselector_event["pool_limit"] == 60
     reranker_event = response.cost["model_services"]["selector_reranker"][0]
     assert reranker_event["candidate_pool"] == 60
+
+
+def test_selector_defaults_are_fixed_to_500_pool_and_120_rerank_candidates():
+    from packages.scholar_core.pipeline import _selector_candidate_limit, _selector_pool_limit, _selector_protected_head
+
+    class MinimalModelServices:
+        pass
+
+    services = MinimalModelServices()
+
+    assert _selector_pool_limit(services) == 500
+    assert _selector_candidate_limit(services) == 120
+    assert _selector_protected_head(services, top_k=50) == 0
+
+
+def test_merge_reranked_head_can_protect_original_top_results():
+    from packages.scholar_core.pipeline import _merge_reranked_head
+
+    original = [
+        Candidate(f"arxiv:orig-{index}", f"Original {index}", final_score=1.0 - index * 0.01)
+        for index in range(5)
+    ]
+    reranked = [original[4], original[3], original[2], original[1], original[0]]
+
+    merged = _merge_reranked_head(reranked, original, protected_head=2)
+
+    assert [candidate.paper_id for candidate in merged[:5]] == [
+        "arxiv:orig-0",
+        "arxiv:orig-1",
+        "arxiv:orig-4",
+        "arxiv:orig-3",
+        "arxiv:orig-2",
+    ]
 
 
 def test_pipeline_adds_llm_query_rewrites_without_dropping_original_actions():

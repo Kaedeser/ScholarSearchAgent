@@ -8,18 +8,63 @@ from packages.scholar_infra.model_services import client as model_client
 from packages.scholar_infra.model_services.client import QueryRewriteServiceClient, SelectorRerankerServiceClient
 
 
+def test_model_services_default_to_trained_services_enabled(tmp_path, monkeypatch):
+    config_path = tmp_path / "database.env"
+    config_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("SCHOLAR_SEARCH_CONFIG", str(config_path))
+    for name in (
+        "MODEL_SERVICES_ENABLED",
+        "QUERY_INTENT_ENABLED",
+        "QUERY_REWRITE_ENABLED",
+        "SELECTOR_RERANKER_ENABLED",
+        "CRAWLER_STRATEGY_ENABLED",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = ScholarSearchSettings.from_env().model_services
+
+    assert settings.enabled is True
+    assert settings.query_intent_enabled is True
+    assert settings.selector_reranker_enabled is True
+    assert settings.crawler_strategy_enabled is True
+    assert settings.query_rewrite_enabled is False
+
+
 def test_model_service_settings_reads_selector_pool_limit(tmp_path, monkeypatch):
     config_path = tmp_path / "database.env"
     config_path.write_text("", encoding="utf-8")
     monkeypatch.setenv("SCHOLAR_SEARCH_CONFIG", str(config_path))
     monkeypatch.setenv("MODEL_SERVICES_ENABLED", "true")
-    monkeypatch.setenv("SELECTOR_RERANKER_CANDIDATE_LIMIT", "50")
+    monkeypatch.setenv("SELECTOR_RERANKER_CANDIDATE_LIMIT", "120")
     monkeypatch.setenv("SELECTOR_RERANKER_POOL_LIMIT", "500")
+    monkeypatch.setenv("SELECTOR_RERANKER_PROTECTED_HEAD", "0")
 
     settings = ScholarSearchSettings.from_env().model_services
 
-    assert settings.selector_reranker_candidate_limit == 50
+    assert settings.selector_reranker_candidate_limit == 120
     assert settings.selector_reranker_pool_limit == 500
+    assert settings.selector_reranker_protected_head == 0
+
+
+def test_scholar_settings_reads_academic_search_options(tmp_path, monkeypatch):
+    config_path = tmp_path / "database.env"
+    config_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("SCHOLAR_SEARCH_CONFIG", str(config_path))
+    monkeypatch.setenv("ACADEMIC_SEARCH_ENABLED", "true")
+    monkeypatch.setenv("ACADEMIC_SEARCH_PROVIDER", "semantic_scholar")
+    monkeypatch.setenv("ACADEMIC_SEARCH_BASE_URL", "https://api.test/graph/v1")
+    monkeypatch.setenv("ACADEMIC_SEARCH_API_KEY", "secret")
+    monkeypatch.setenv("ACADEMIC_SEARCH_QUERY_LIMIT", "3")
+    monkeypatch.setenv("ACADEMIC_SEARCH_TOP_K", "25")
+
+    settings = ScholarSearchSettings.from_env()
+
+    assert settings.academic_search_enabled is True
+    assert settings.academic_search_provider == "semantic_scholar"
+    assert settings.academic_search_base_url == "https://api.test/graph/v1"
+    assert settings.academic_search_api_key == "secret"
+    assert settings.academic_search_query_limit == 3
+    assert settings.academic_search_top_k == 25
 
 
 def test_selector_reranker_sorts_after_score_fusion(monkeypatch):

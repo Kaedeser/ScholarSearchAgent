@@ -95,6 +95,13 @@ class Settings:
     dense_embedding_timeout_sec: float
     dense_embedding_verify_ssl: bool
     neo4j_retrieval_enabled: bool
+    academic_search_enabled: bool
+    academic_search_provider: str
+    academic_search_base_url: str
+    academic_search_api_key: str
+    academic_search_timeout_sec: float
+    academic_search_query_limit: int
+    academic_search_top_k: int
     neo4j_http_url: str
     neo4j_user: str
     neo4j_password: str
@@ -173,6 +180,21 @@ class Settings:
             ),
             dense_embedding_timeout_sec=max(0.1, _config_float(config_values, "DENSE_EMBEDDING_TIMEOUT_SEC", 120.0)),
             dense_embedding_verify_ssl=_config_bool(config_values, "DENSE_EMBEDDING_VERIFY_SSL", True),
+            academic_search_enabled=_config_bool(config_values, "ACADEMIC_SEARCH_ENABLED", False),
+            academic_search_provider=_config_value(
+                config_values,
+                "ACADEMIC_SEARCH_PROVIDER",
+                "semantic_scholar",
+            ),
+            academic_search_base_url=_config_value(
+                config_values,
+                "ACADEMIC_SEARCH_BASE_URL",
+                "https://api.semanticscholar.org/graph/v1",
+            ).rstrip("/"),
+            academic_search_api_key=_config_value(config_values, "ACADEMIC_SEARCH_API_KEY", ""),
+            academic_search_timeout_sec=max(0.1, _config_float(config_values, "ACADEMIC_SEARCH_TIMEOUT_SEC", 8.0)),
+            academic_search_query_limit=max(0, _config_int(config_values, "ACADEMIC_SEARCH_QUERY_LIMIT", 2)),
+            academic_search_top_k=max(1, _config_int(config_values, "ACADEMIC_SEARCH_TOP_K", 20)),
             neo4j_http_url=_config_value(config_values, "NEO4J_HTTP_URL", "http://10.99.24.182:30474").rstrip("/"),
             neo4j_user=_config_value(config_values, "NEO4J_USER", "neo4j"),
             neo4j_password=_config_value(config_values, "NEO4J_PASSWORD", ""),

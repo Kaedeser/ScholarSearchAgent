@@ -136,6 +136,8 @@ configs/database.env
 
 旧路径 `config/database.env` 仍作为兼容回退。远端模型服务配置项：
 
+未配置 `MODEL_SERVICES_ENABLED` 时，系统默认启用 Query Intent、Selector Reranker 和 Crawler Strategy 三个本地训练模型服务。Query Rewrite 依赖 GPUStack/OpenAI-compatible 凭据，默认保持关闭并由配置显式启用。
+
 ```text
 MODEL_SERVICES_ENABLED=true
 MODEL_SERVICE_TIMEOUT_SEC=8
@@ -145,7 +147,8 @@ QUERY_INTENT_MODE=auto
 SELECTOR_RERANKER_ENABLED=true
 SELECTOR_RERANKER_SERVICE_URL=http://10.99.24.182:32082
 SELECTOR_RERANKER_POOL_LIMIT=500
-SELECTOR_RERANKER_CANDIDATE_LIMIT=50
+SELECTOR_RERANKER_CANDIDATE_LIMIT=120
+SELECTOR_RERANKER_PROTECTED_HEAD=0
 CRAWLER_STRATEGY_ENABLED=true
 CRAWLER_STRATEGY_SERVICE_URL=http://10.99.24.182:32183
 CRAWLER_STRATEGY_TOP_N=3
@@ -157,14 +160,30 @@ CRAWLER_STRATEGY_TOP_N=3
 python -m apps.backend.scholar_api.cli --backend auto --disable-model-services serve --port 8765
 ```
 
-## 6. 数据库后端检查
+## 6. 外部学术搜索 API
+
+系统支持可选的 Semantic Scholar Academic Graph 搜索召回源。默认关闭，避免离线评测依赖公网。
+
+```text
+ACADEMIC_SEARCH_ENABLED=false
+ACADEMIC_SEARCH_PROVIDER=semantic_scholar
+ACADEMIC_SEARCH_BASE_URL=https://api.semanticscholar.org/graph/v1
+ACADEMIC_SEARCH_API_KEY=
+ACADEMIC_SEARCH_TIMEOUT_SEC=8
+ACADEMIC_SEARCH_QUERY_LIMIT=2
+ACADEMIC_SEARCH_TOP_K=20
+```
+
+开启后，后端会对前若干个子查询调用 Semantic Scholar `/paper/search`，并把返回论文统一合并进候选池。数据库后端和本地 JSONL 后端都支持该检索动作，因此 `--backend auto` 回退到本地数据后仍可使用 Semantic Scholar。真实 API key 不要提交。
+
+## 7. 数据库后端检查
 
 ```powershell
 python -m packages.scholar_ingest.cli doctor --check-mysql --check-es --check-qdrant
 python -m packages.scholar_ingest.cli verify-all
 ```
 
-## 7. 常见问题
+## 8. 常见问题
 
 ### 前端显示 API unavailable
 

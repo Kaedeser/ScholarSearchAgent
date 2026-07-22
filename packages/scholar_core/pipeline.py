@@ -40,12 +40,22 @@ class SearchPipeline:
         per_query_top_k: int = 30,
         model_services: ModelServicesPort | None = None,
         backend_error: str | None = None,
+        academic_search_enabled: bool = False,
+        academic_search_provider: str = "semantic_scholar",
+        academic_search_query_limit: int = 2,
+        academic_search_top_k: int = 20,
     ) -> None:
         self.corpus = corpus
         self.backend_error = backend_error
         self.model_services = model_services or DisabledModelServices()
         self.parser = QueryParser()
-        self.planner = SearchPlanner(per_query_top_k=per_query_top_k)
+        self.planner = SearchPlanner(
+            per_query_top_k=per_query_top_k,
+            academic_search_enabled=academic_search_enabled,
+            academic_search_provider=academic_search_provider,
+            academic_search_query_limit=academic_search_query_limit,
+            academic_search_top_k=academic_search_top_k,
+        )
         self.normalizer = CandidateNormalizer()
         self.ranker = CandidateRanker()
         self.preselector = CandidatePreselector()
@@ -869,6 +879,7 @@ def _rrf_source_weight(action: SearchAction) -> float:
         "qdrant_sparse_paper": 1.08,
         "neo4j_alias": 1.1,
         "neo4j_concept": 0.72,
+        "semantic_scholar": 0.86,
     }.get(action.source, 1.0)
     return base * max(0.1, action.weight)
 

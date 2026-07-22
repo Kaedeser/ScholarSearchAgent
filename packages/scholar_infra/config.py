@@ -80,6 +80,13 @@ class ScholarSearchSettings:
     agent_root: Path
     config_path: Path
     model_services: ModelServiceSettings
+    academic_search_enabled: bool
+    academic_search_provider: str
+    academic_search_base_url: str
+    academic_search_api_key: str
+    academic_search_timeout_sec: float
+    academic_search_query_limit: int
+    academic_search_top_k: int
     neo4j_retrieval_enabled: bool
     neo4j_http_url: str
     neo4j_user: str
@@ -96,7 +103,7 @@ class ScholarSearchSettings:
         default_config = _default_config_path(agent_root)
         config_path = Path(os.getenv("SCHOLAR_SEARCH_CONFIG", default_config)).expanduser().resolve()
         config_values = _read_env_file(config_path)
-        enabled = _config_bool(config_values, "MODEL_SERVICES_ENABLED", False)
+        enabled = _config_bool(config_values, "MODEL_SERVICES_ENABLED", True)
         return cls(
             agent_root=agent_root,
             config_path=config_path,
@@ -168,6 +175,21 @@ class ScholarSearchSettings:
                 crawler_strategy_top_n=max(0, _config_int(config_values, "CRAWLER_STRATEGY_TOP_N", 3)),
                 timeout_sec=max(0.1, _config_float(config_values, "MODEL_SERVICE_TIMEOUT_SEC", 8.0)),
             ),
+            academic_search_enabled=_config_bool(config_values, "ACADEMIC_SEARCH_ENABLED", False),
+            academic_search_provider=_config_value(
+                config_values,
+                "ACADEMIC_SEARCH_PROVIDER",
+                "semantic_scholar",
+            ),
+            academic_search_base_url=_config_value(
+                config_values,
+                "ACADEMIC_SEARCH_BASE_URL",
+                "https://api.semanticscholar.org/graph/v1",
+            ).rstrip("/"),
+            academic_search_api_key=_config_value(config_values, "ACADEMIC_SEARCH_API_KEY", ""),
+            academic_search_timeout_sec=max(0.1, _config_float(config_values, "ACADEMIC_SEARCH_TIMEOUT_SEC", 8.0)),
+            academic_search_query_limit=max(0, _config_int(config_values, "ACADEMIC_SEARCH_QUERY_LIMIT", 2)),
+            academic_search_top_k=max(1, _config_int(config_values, "ACADEMIC_SEARCH_TOP_K", 20)),
             neo4j_http_url=_config_value(config_values, "NEO4J_HTTP_URL", "http://10.99.24.182:30474").rstrip("/"),
             neo4j_user=_config_value(config_values, "NEO4J_USER", "neo4j"),
             neo4j_password=_config_value(config_values, "NEO4J_PASSWORD", ""),

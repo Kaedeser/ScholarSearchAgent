@@ -69,7 +69,8 @@ QUERY_INTENT_MODE=auto
 SELECTOR_RERANKER_ENABLED=true
 SELECTOR_RERANKER_SERVICE_URL=http://10.99.24.182:32082
 SELECTOR_RERANKER_POOL_LIMIT=500
-SELECTOR_RERANKER_CANDIDATE_LIMIT=50
+SELECTOR_RERANKER_CANDIDATE_LIMIT=120
+SELECTOR_RERANKER_PROTECTED_HEAD=0
 
 CRAWLER_STRATEGY_ENABLED=true
 CRAWLER_STRATEGY_SERVICE_URL=http://10.99.24.182:32183
@@ -85,8 +86,24 @@ CRAWLER_STRATEGY_TOP_N=3
 离线调试时可以临时关闭：
 
 ```bash
-python -m scholar_app.cli --disable-model-services --backend jsonl search --query "image retrieval"
+python -m apps.backend.scholar_api.cli --disable-model-services --backend jsonl search --query "image retrieval"
 ```
+
+## 外部学术搜索 API
+
+为满足赛题“检索后端需对接至少一种学术搜索 API”的要求，系统新增了可选的 Semantic Scholar Academic Graph 搜索召回源。默认关闭，避免离线评测依赖公网。
+
+```text
+ACADEMIC_SEARCH_ENABLED=false
+ACADEMIC_SEARCH_PROVIDER=semantic_scholar
+ACADEMIC_SEARCH_BASE_URL=https://api.semanticscholar.org/graph/v1
+ACADEMIC_SEARCH_API_KEY=
+ACADEMIC_SEARCH_TIMEOUT_SEC=8
+ACADEMIC_SEARCH_QUERY_LIMIT=2
+ACADEMIC_SEARCH_TOP_K=20
+```
+
+开启后，`SearchPlanner` 会把前若干个子查询加入 `semantic_scholar` 检索动作，`DatabaseCorpus` 和本地 JSONL `LocalCorpus` 都可调用 `/paper/search` 获取 title、abstract、year、venue、citationCount、externalIds 等轻量元数据，并统一转成 `Candidate`。因此 `auto` 模式即使因数据库不可用而回退到本地数据，也仍能保留 Semantic Scholar 召回。真实 API key 只放在本地 `database.env` 或环境变量中，不能提交。
 
 ## 路径规则
 
@@ -123,8 +140,7 @@ python scripts/server_ingest.py status
 Demo 使用数据库后端：
 
 ```bash
-cd ..
-python -m scholar_app.cli --backend database search --query "image retrieval" --top-k 3
+python -m apps.backend.scholar_api.cli --backend database search --query "image retrieval" --top-k 3
 ```
 
 ## 更换环境

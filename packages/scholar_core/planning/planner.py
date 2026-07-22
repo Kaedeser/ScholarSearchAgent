@@ -12,11 +12,19 @@ class SearchPlanner:
         self,
         *,
         per_query_top_k: int = 60,
+        academic_search_enabled: bool = False,
+        academic_search_provider: str = "semantic_scholar",
+        academic_search_query_limit: int = 2,
+        academic_search_top_k: int = 20,
         max_api_calls: int = 0,
         max_llm_calls: int = 0,
         max_search_rounds: int = 2,
     ) -> None:
         self.per_query_top_k = per_query_top_k
+        self.academic_search_enabled = academic_search_enabled
+        self.academic_search_provider = academic_search_provider
+        self.academic_search_query_limit = max(0, academic_search_query_limit)
+        self.academic_search_top_k = max(1, academic_search_top_k)
         self.max_api_calls = max_api_calls
         self.max_llm_calls = max_llm_calls
         self.max_search_rounds = max_search_rounds
@@ -54,6 +62,15 @@ class SearchPlanner:
                 actions.append(
                     SearchAction("qdrant_sparse_paper", sub_query, budget["sparse_paper_top_k"], dense_weight * 0.72)
                 )
+            if self.academic_search_enabled and index < self.academic_search_query_limit:
+                actions.append(
+                    SearchAction(
+                        self.academic_search_provider,
+                        sub_query,
+                        min(self.academic_search_top_k, max(1, top_k)),
+                        0.82 if index == 0 else 0.72,
+                    )
+                )
         concept_query = _neo4j_concept_query(intent)
         if concept_query:
             actions.append(SearchAction("neo4j_concept", concept_query, budget["concept_top_k"], 0.72))
@@ -67,11 +84,17 @@ class SearchPlanner:
             expand_citations_for=[],
             budget={
                 "max_search_rounds": self.max_search_rounds,
-                "max_api_calls": self.max_api_calls,
+                "max_api_calls": self.max_api_calls or self.academic_search_query_limit,
                 "max_llm_calls": self.max_llm_calls,
                 "max_candidates_for_selector": 400,
                 "max_candidates_for_llm_judge": 0,
                 "query_profile": profile,
+                "academic_search": {
+                    "enabled": self.academic_search_enabled,
+                    "provider": self.academic_search_provider,
+                    "query_limit": self.academic_search_query_limit,
+                    "top_k": self.academic_search_top_k,
+                },
                 "retrieval_budget": budget,
             },
         )

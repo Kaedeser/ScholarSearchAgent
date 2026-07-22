@@ -115,10 +115,13 @@ query_intent_model/artifacts/remote_model_manifest.json
 
 ```text
 SELECTOR_RERANKER_POOL_LIMIT=500
-SELECTOR_RERANKER_CANDIDATE_LIMIT=50
+SELECTOR_RERANKER_CANDIDATE_LIMIT=120
+SELECTOR_RERANKER_PROTECTED_HEAD=0
 ```
 
-规则预筛层会先从最多 500 个候选中结合约束覆盖、多源支持、title/chunk/dense/sparse/graph 信号收束到 50 个，再调用 `/rerank` 做精排。
+规则预筛层会先从最多 500 个候选中结合约束覆盖、多源支持、title/chunk/dense/sparse/graph 信号收束到 120 个，再调用 `/rerank` 做精排。
+
+本轮 500 -> 120 -> rerank 固化方案和全量测试结果见 [RERANK_PRESELECTOR_500_TO_120_OPTIMIZATION_20260705.md](RERANK_PRESELECTOR_500_TO_120_OPTIMIZATION_20260705.md)。
 
 ### 访问地址与接口
 
