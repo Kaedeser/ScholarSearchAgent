@@ -72,8 +72,12 @@ class CandidateRanker:
         source_rank_signal = self._source_rank_signal(candidate)
         rrf_signal = self._rrf_signal(candidate)
         paper_sparse_synergy = self._paper_sparse_synergy(candidate)
-        source_confidence = min(1.0, len(candidate.sources) / 3)
+        academic_synergy = self._academic_synergy(candidate)
+        source_ranks = candidate.metadata.get("source_ranks") or {}
+        source_confidence = min(1.0, len(source_ranks) / 3) if isinstance(source_ranks, dict) else 0.0
         citation_authority = min(1.0, log1p(candidate.citation_count or 0) / 8)
+        academic_graph_authority = self._academic_graph_authority(candidate)
+        candidate.metadata["academic_graph_authority"] = round(academic_graph_authority, 6)
         recency_score = self._recency(candidate.year)
         exact_phrase_bonus = self._exact_phrase_bonus(candidate, matched)
         soft_alias_bonus = self._soft_alias_bonus(candidate, intent)
@@ -93,12 +97,14 @@ class CandidateRanker:
             + 0.48 * source_rank_signal
             + 0.3 * rrf_signal
             + 0.22 * paper_sparse_synergy
+            + 0.18 * academic_synergy
             + 0.1 * keyword_match
             + 0.12 * soft_alias_bonus
             + 0.42 * strong_alias_bonus
             + 0.18 * graph_alias_bonus
             + 0.05 * source_confidence
             + 0.04 * citation_authority
+            + 0.05 * academic_graph_authority
             + 0.03 * recency_score
             + 0.03 * exact_phrase_bonus
             - missing_penalty
@@ -134,6 +140,8 @@ class CandidateRanker:
             "qdrant_sparse_paper": 0.55,
             "neo4j_alias": 0.75,
             "neo4j_concept": 0.65,
+            "semantic_scholar": 1.1,
+            "semantic_scholar_snippet": 0.95,
         }
         for source, raw_rank in ranks.items():
             rank = max(1, _safe_int(raw_rank))
@@ -143,6 +151,25 @@ class CandidateRanker:
         if total_weight <= 0:
             return 0.0
         return min(1.0, weighted / min(total_weight, 2.8))
+
+    def _academic_synergy(self, candidate: Candidate) -> float:
+        ranks = candidate.metadata.get("source_ranks") or {}
+        if not isinstance(ranks, dict) or "semantic_scholar" not in ranks:
+            return 0.0
+        relevance_rank = max(1, _safe_int(ranks.get("semantic_scholar")))
+        relevance = 0.62 / (1.0 + relevance_rank / 18.0)
+        if "semantic_scholar_snippet" not in ranks:
+            return relevance
+        snippet_rank = max(1, _safe_int(ranks.get("semantic_scholar_snippet")))
+        snippet = 0.55 / (1.0 + snippet_rank / 24.0)
+        return min(1.0, relevance + snippet)
+
+    def _academic_graph_authority(self, candidate: Candidate) -> float:
+        influential = max(0, _safe_int(candidate.metadata.get("influential_citation_count")))
+        references = max(0, _safe_int(candidate.metadata.get("reference_count")))
+        influential_score = min(1.0, log1p(influential) / 5.0)
+        reference_score = min(1.0, log1p(references) / 8.0)
+        return 0.75 * influential_score + 0.25 * reference_score
 
     def _paper_sparse_synergy(self, candidate: Candidate) -> float:
         ranks = candidate.metadata.get("source_ranks") or {}

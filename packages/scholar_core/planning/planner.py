@@ -16,6 +16,9 @@ class SearchPlanner:
         academic_search_provider: str = "semantic_scholar",
         academic_search_query_limit: int = 2,
         academic_search_top_k: int = 20,
+        academic_search_snippet_enabled: bool = False,
+        academic_search_snippet_top_k: int = 30,
+        available_sources: set[str] | None = None,
         max_api_calls: int = 0,
         max_llm_calls: int = 0,
         max_search_rounds: int = 2,
@@ -25,12 +28,16 @@ class SearchPlanner:
         self.academic_search_provider = academic_search_provider
         self.academic_search_query_limit = max(0, academic_search_query_limit)
         self.academic_search_top_k = max(1, academic_search_top_k)
+        self.academic_search_snippet_enabled = academic_search_snippet_enabled
+        self.academic_search_snippet_top_k = max(1, academic_search_snippet_top_k)
+        self.available_sources = set(available_sources) if available_sources is not None else None
         self.max_api_calls = max_api_calls
         self.max_llm_calls = max_llm_calls
         self.max_search_rounds = max_search_rounds
 
     def plan(self, intent: QueryIntent, *, round_number: int = 1) -> SearchPlan:
         actions: list[SearchAction] = []
+        academic_filters = _academic_search_filters(intent)
         profile = query_profile_kind(intent)
         budget = profile_retrieval_budget(profile, self.per_query_top_k)
         for index, sub_query in enumerate(intent.sub_queries):
@@ -69,8 +76,19 @@ class SearchPlanner:
                         sub_query,
                         min(self.academic_search_top_k, max(1, top_k)),
                         0.82 if index == 0 else 0.72,
+                        filters=academic_filters,
                     )
                 )
+                if self.academic_search_snippet_enabled:
+                    actions.append(
+                        SearchAction(
+                            "semantic_scholar_snippet",
+                            sub_query,
+                            self.academic_search_snippet_top_k,
+                            0.74 if index == 0 else 0.64,
+                            filters=academic_filters,
+                        )
+                    )
         concept_query = _neo4j_concept_query(intent)
         if concept_query:
             actions.append(SearchAction("neo4j_concept", concept_query, budget["concept_top_k"], 0.72))
@@ -78,13 +96,18 @@ class SearchPlanner:
         if alias_query and budget["alias_enabled"]:
             alias_weight = 0.92 if profile in {"auto_locator", "method_or_dataset", "dataset_or_benchmark"} else 0.86
             actions.append(SearchAction("neo4j_alias", alias_query, budget["alias_top_k"], alias_weight))
+        if self.available_sources is not None:
+            actions = [action for action in actions if action.source in self.available_sources]
+        planned_api_calls = sum(
+            1 for action in actions if action.source in {"semantic_scholar", "semantic_scholar_snippet"}
+        )
         return SearchPlan(
             round=round_number,
             search_actions=actions,
             expand_citations_for=[],
             budget={
                 "max_search_rounds": self.max_search_rounds,
-                "max_api_calls": self.max_api_calls or self.academic_search_query_limit,
+                "max_api_calls": self.max_api_calls or planned_api_calls,
                 "max_llm_calls": self.max_llm_calls,
                 "max_candidates_for_selector": 400,
                 "max_candidates_for_llm_judge": 0,
@@ -94,6 +117,8 @@ class SearchPlanner:
                     "provider": self.academic_search_provider,
                     "query_limit": self.academic_search_query_limit,
                     "top_k": self.academic_search_top_k,
+                    "snippet_enabled": self.academic_search_snippet_enabled,
+                    "snippet_top_k": self.academic_search_snippet_top_k,
                 },
                 "retrieval_budget": budget,
             },
@@ -160,6 +185,21 @@ def _looks_like_constraint_query(query: str) -> bool:
             "target network",
         )
     )
+
+
+def _academic_search_filters(intent: QueryIntent) -> dict[str, str]:
+    filters: dict[str, str] = {}
+    if intent.time_range:
+        start, end = intent.time_range
+        if start is not None and end is not None:
+            filters["year"] = str(start) if start == end else f"{start}-{end}"
+        elif start is not None:
+            filters["year"] = f"{start}-"
+        elif end is not None:
+            filters["year"] = f"-{end}"
+    if intent.venues:
+        filters["venue"] = ",".join(intent.venues)
+    return filters
 
 
 def _neo4j_concept_query(intent: QueryIntent) -> str:

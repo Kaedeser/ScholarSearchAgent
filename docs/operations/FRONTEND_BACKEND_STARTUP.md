@@ -38,6 +38,12 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/health" -Method Get
 python -m apps.backend.scholar_api.cli --backend database serve --host 127.0.0.1 --port 8765
 ```
 
+仅使用 Semantic Scholar（无需配置 ES、Qdrant、Neo4j）：
+
+```powershell
+python -m apps.backend.scholar_api.cli --backend semantic_scholar serve --host 127.0.0.1 --port 8765
+```
+
 离线 JSONL 后端，并关闭远端模型服务：
 
 ```powershell
@@ -172,6 +178,13 @@ ACADEMIC_SEARCH_API_KEY=
 ACADEMIC_SEARCH_TIMEOUT_SEC=8
 ACADEMIC_SEARCH_QUERY_LIMIT=2
 ACADEMIC_SEARCH_TOP_K=20
+ACADEMIC_SEARCH_SNIPPET_ENABLED=true
+ACADEMIC_SEARCH_SNIPPET_TOP_K=30
+ACADEMIC_SEARCH_MAX_RETRIES=2
+ACADEMIC_SEARCH_RETRY_BACKOFF_SEC=1
+ACADEMIC_SEARCH_MIN_INTERVAL_SEC=1
+ACADEMIC_SEARCH_CACHE_SIZE=256
+ACADEMIC_SEARCH_CACHE_PATH=
 ```
 
 开启后，后端会对前若干个子查询调用 Semantic Scholar `/paper/search`，并把返回论文统一合并进候选池。数据库后端和本地 JSONL 后端都支持该检索动作，因此 `--backend auto` 回退到本地数据后仍可使用 Semantic Scholar。真实 API key 不要提交。

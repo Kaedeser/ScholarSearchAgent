@@ -103,9 +103,16 @@ ACADEMIC_SEARCH_API_KEY=
 ACADEMIC_SEARCH_TIMEOUT_SEC=8
 ACADEMIC_SEARCH_QUERY_LIMIT=2
 ACADEMIC_SEARCH_TOP_K=20
+ACADEMIC_SEARCH_SNIPPET_ENABLED=true
+ACADEMIC_SEARCH_SNIPPET_TOP_K=30
+ACADEMIC_SEARCH_MAX_RETRIES=2
+ACADEMIC_SEARCH_RETRY_BACKOFF_SEC=1
+ACADEMIC_SEARCH_MIN_INTERVAL_SEC=1
+ACADEMIC_SEARCH_CACHE_SIZE=256
+ACADEMIC_SEARCH_CACHE_PATH=
 ```
 
-开启后，`SearchPlanner` 会把前若干个子查询加入 `semantic_scholar` 检索动作，`DatabaseCorpus` 和本地 JSONL `LocalCorpus` 都可调用 `/paper/search` 获取 title、abstract、year、venue、citationCount、externalIds 等轻量元数据，并统一转成 `Candidate`。因此 `auto` 模式即使因数据库不可用而回退到本地数据，也仍能保留 Semantic Scholar 召回。真实 API key 只放在本地 `database.env` 或环境变量中，不能提交。
+开启后，`SearchPlanner` 会为前若干个子查询同时规划 `/paper/search` 相关性召回和 `/snippet/search` 正文证据召回，并将两路结果转成 `Candidate`，继续复用 source rank、RRF、约束覆盖、引用量、年份、preselector 和 reranker 粗排规则。`semantic_scholar` 后端不需要本地数据文件或数据库配置；`auto` 模式在数据库初始化失败时会直接回退到该 API-only 后端。真实 API key 只放在本地 `database.env` 或环境变量中，不能提交。
 
 ## 路径规则
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from packages.scholar_core.pipeline import SearchPipeline
 from packages.scholar_infra.config import ScholarSearchSettings
 from packages.scholar_infra.model_services.client import ModelServices
-from packages.scholar_infra.retrieval_backends.retrieval import DatabaseCorpus, LocalCorpus
+from packages.scholar_infra.retrieval_backends.retrieval import DatabaseCorpus, LocalCorpus, SemanticScholarCorpus
 
 
 def build_search_pipeline(
@@ -32,6 +32,7 @@ def build_search_pipeline(
         paper_limit=paper_limit,
         chunk_limit=chunk_limit,
         max_chunks_per_paper=max_chunks_per_paper,
+        settings=settings,
     )
     return SearchPipeline(
         corpus,
@@ -42,6 +43,8 @@ def build_search_pipeline(
         academic_search_provider=settings.academic_search_provider,
         academic_search_query_limit=settings.academic_search_query_limit,
         academic_search_top_k=settings.academic_search_top_k,
+        academic_search_snippet_enabled=settings.academic_search_snippet_enabled,
+        academic_search_snippet_top_k=settings.academic_search_snippet_top_k,
     )
 
 
@@ -52,9 +55,13 @@ def _build_corpus(
     paper_limit: int | None,
     chunk_limit: int | None,
     max_chunks_per_paper: int,
+    settings: ScholarSearchSettings | None = None,
 ):
-    if backend not in {"auto", "jsonl", "database"}:
+    if backend not in {"auto", "jsonl", "database", "semantic_scholar"}:
         raise ValueError(f"Unsupported backend: {backend}")
+    settings = settings or ScholarSearchSettings.from_env()
+    if backend == "semantic_scholar":
+        return SemanticScholarCorpus(settings), None
     if backend in {"auto", "database"}:
         try:
             return DatabaseCorpus(), None
@@ -62,6 +69,11 @@ def _build_corpus(
             if backend == "database":
                 raise
             backend_error = str(exc)
+        if settings.academic_search_enabled and settings.academic_search_provider == "semantic_scholar":
+            try:
+                return SemanticScholarCorpus(settings), backend_error
+            except Exception as exc:
+                backend_error = f"{backend_error}; Semantic Scholar fallback failed: {exc}"
         return (
             LocalCorpus(
                 processed_dir,

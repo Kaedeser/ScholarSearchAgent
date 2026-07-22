@@ -79,6 +79,7 @@ class CandidatePreselector:
             ("title_anchor", _title_lane, _lane_quota(profile, target, "title")),
             ("dense_lexical_bridge", _dense_lane, _lane_quota(profile, target, "dense")),
             ("sparse_lexical_bridge", _sparse_lane, _lane_quota(profile, target, "sparse")),
+            ("academic_evidence", _academic_lane, _lane_quota(profile, target, "academic")),
             ("alias_or_graph", _alias_graph_lane, _lane_quota(profile, target, "alias")),
         ]
         scored_desc = sorted(scored, key=lambda item: item[0], reverse=True)
@@ -136,13 +137,15 @@ def _preselect_score(candidate: Candidate, profile: str, original_rank: int) -> 
     score += 0.16 / (1.0 + original_rank / 45.0)
     score += 0.09 * min(4, _support_count(candidate))
     score += 0.08 * min(3, len(candidate.matched_constraints))
-    score += 0.05 * min(2, len(candidate.sources))
+    score += 0.05 * min(2, len(ranks))
     score += _rank_bonus(ranks, "local_title_bm25", 0.28, 24)
     score += _rank_bonus(ranks, "local_chunk_bm25", 0.18, 30)
     score += _rank_bonus(ranks, "qdrant_dense_paper", 0.22, 38)
     score += _rank_bonus(ranks, "qdrant_sparse_paper", 0.16, 44)
     score += _rank_bonus(ranks, "local_tfidf", 0.08, 30)
     score += _rank_bonus(ranks, "neo4j_concept", 0.07, 24)
+    score += _rank_bonus(ranks, "semantic_scholar", 0.24, 32)
+    score += _rank_bonus(ranks, "semantic_scholar_snippet", 0.2, 38)
     score += 0.18 * _safe_float(candidate.metadata.get("soft_alias_bonus"))
     score += 0.32 * _safe_float(candidate.metadata.get("strong_alias_bonus"))
     score += 0.2 * _safe_float(candidate.metadata.get("graph_alias_bonus"))
@@ -186,6 +189,7 @@ def _lane_quota(profile: str, target: int, lane: str) -> int:
         "dense": max(5, target // 5),
         "sparse": max(4, target // 6),
         "alias": max(2, target // 10),
+        "academic": max(4, target // 6),
     }
     if profile in {"real_multi_answer", "survey_or_list"}:
         base["multi_source"] += 3
@@ -229,6 +233,17 @@ def _alias_graph_lane(candidate: Candidate) -> bool:
     return _has_alias_signal(candidate) or "neo4j_concept" in candidate.sources
 
 
+def _academic_lane(candidate: Candidate) -> bool:
+    ranks = candidate.metadata.get("source_ranks") or {}
+    if not isinstance(ranks, dict):
+        return False
+    return _rank_present(ranks, "semantic_scholar", 80) and (
+        _rank_present(ranks, "semantic_scholar_snippet", 120)
+        or bool(candidate.matched_constraints)
+        or candidate.relevance != "weakly_relevant"
+    )
+
+
 def _support_count(candidate: Candidate) -> int:
     ranks = candidate.metadata.get("source_ranks") or {}
     if not isinstance(ranks, dict):
@@ -240,6 +255,8 @@ def _support_count(candidate: Candidate) -> int:
         "qdrant_dense_paper",
         "qdrant_sparse_paper",
         "neo4j_concept",
+        "semantic_scholar",
+        "semantic_scholar_snippet",
     }
     return sum(1 for source in support_sources if source in ranks and max(1, _safe_int(ranks[source])) <= 120)
 

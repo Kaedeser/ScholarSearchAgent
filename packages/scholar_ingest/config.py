@@ -102,6 +102,13 @@ class Settings:
     academic_search_timeout_sec: float
     academic_search_query_limit: int
     academic_search_top_k: int
+    academic_search_snippet_enabled: bool
+    academic_search_snippet_top_k: int
+    academic_search_max_retries: int
+    academic_search_retry_backoff_sec: float
+    academic_search_min_interval_sec: float
+    academic_search_cache_size: int
+    academic_search_cache_path: str
     neo4j_http_url: str
     neo4j_user: str
     neo4j_password: str
@@ -195,6 +202,36 @@ class Settings:
             academic_search_timeout_sec=max(0.1, _config_float(config_values, "ACADEMIC_SEARCH_TIMEOUT_SEC", 8.0)),
             academic_search_query_limit=max(0, _config_int(config_values, "ACADEMIC_SEARCH_QUERY_LIMIT", 2)),
             academic_search_top_k=max(1, _config_int(config_values, "ACADEMIC_SEARCH_TOP_K", 20)),
+            academic_search_snippet_enabled=_config_bool(
+                config_values,
+                "ACADEMIC_SEARCH_SNIPPET_ENABLED",
+                True,
+            ),
+            academic_search_snippet_top_k=max(
+                1,
+                _config_int(config_values, "ACADEMIC_SEARCH_SNIPPET_TOP_K", 30),
+            ),
+            academic_search_max_retries=max(
+                0,
+                _config_int(config_values, "ACADEMIC_SEARCH_MAX_RETRIES", 2),
+            ),
+            academic_search_retry_backoff_sec=max(
+                0.0,
+                _config_float(config_values, "ACADEMIC_SEARCH_RETRY_BACKOFF_SEC", 1.0),
+            ),
+            academic_search_min_interval_sec=max(
+                0.0,
+                _config_float(config_values, "ACADEMIC_SEARCH_MIN_INTERVAL_SEC", 1.0),
+            ),
+            academic_search_cache_size=max(
+                0,
+                _config_int(config_values, "ACADEMIC_SEARCH_CACHE_SIZE", 256),
+            ),
+            academic_search_cache_path=_config_value(
+                config_values,
+                "ACADEMIC_SEARCH_CACHE_PATH",
+                str(agent_root / "cost_control_cache" / "semantic_scholar_cache.json"),
+            ),
             neo4j_http_url=_config_value(config_values, "NEO4J_HTTP_URL", "http://10.99.24.182:30474").rstrip("/"),
             neo4j_user=_config_value(config_values, "NEO4J_USER", "neo4j"),
             neo4j_password=_config_value(config_values, "NEO4J_PASSWORD", ""),

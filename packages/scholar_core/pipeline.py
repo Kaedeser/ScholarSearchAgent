@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 import re
 import time
 from typing import Any
@@ -32,6 +32,13 @@ DEFAULT_SELECTOR_CANDIDATE_LIMIT = 120
 DEFAULT_SELECTOR_PROTECTED_HEAD = 0
 
 
+@dataclass
+class _RetrievalExecution:
+    api_action_budget: int
+    actions_executed: int = 0
+    api_actions_executed: int = 0
+
+
 class SearchPipeline:
     def __init__(
         self,
@@ -44,10 +51,14 @@ class SearchPipeline:
         academic_search_provider: str = "semantic_scholar",
         academic_search_query_limit: int = 2,
         academic_search_top_k: int = 20,
+        academic_search_snippet_enabled: bool = False,
+        academic_search_snippet_top_k: int = 30,
     ) -> None:
         self.corpus = corpus
         self.backend_error = backend_error
         self.model_services = model_services or DisabledModelServices()
+        supported_sources = getattr(corpus, "supported_sources", None)
+        self.available_sources = set(supported_sources) if supported_sources is not None else None
         self.parser = QueryParser()
         self.planner = SearchPlanner(
             per_query_top_k=per_query_top_k,
@@ -55,6 +66,9 @@ class SearchPipeline:
             academic_search_provider=academic_search_provider,
             academic_search_query_limit=academic_search_query_limit,
             academic_search_top_k=academic_search_top_k,
+            academic_search_snippet_enabled=academic_search_snippet_enabled,
+            academic_search_snippet_top_k=academic_search_snippet_top_k,
+            available_sources=self.available_sources,
         )
         self.normalizer = CandidateNormalizer()
         self.ranker = CandidateRanker()
@@ -113,12 +127,13 @@ class SearchPipeline:
                 },
             )
         first_plan = self.planner.plan(parsed, round_number=1)
+        execution = _RetrievalExecution(
+            api_action_budget=max(0, int(first_plan.budget.get("max_api_calls") or 0))
+        )
 
         all_candidates: list[Candidate] = []
-        actions_executed = 0
-        first_round_candidates = self._run_actions(first_plan.search_actions)
+        first_round_candidates = self._run_actions(first_plan.search_actions, execution=execution)
         all_candidates.extend(first_round_candidates)
-        actions_executed += len(first_plan.search_actions)
 
         ranked = self._rank(all_candidates, parsed, query=query, top_k=top_k, model_events=model_events)
         coverage = self.coverage.analyze(parsed, ranked)
@@ -133,7 +148,7 @@ class SearchPipeline:
         )
         if graph_candidates:
             all_candidates.extend(graph_candidates)
-            actions_executed += 1
+            execution.actions_executed += 1
             ranked = self._rank(all_candidates, parsed, query=query, top_k=top_k, model_events=model_events)
             coverage = self.coverage.analyze(parsed, ranked)
             rounds = max(rounds, 2)
@@ -164,25 +179,27 @@ class SearchPipeline:
                 )
                 for next_query in coverage.next_queries[: int(retrieval_budget.get("second_round_dense_queries") or 3)]
             )
-            all_candidates.extend(self._run_actions(second_actions))
-            actions_executed += len(second_actions)
-            ranked = self._rank(all_candidates, parsed, query=query, top_k=top_k, model_events=model_events)
-            coverage = self.coverage.analyze(parsed, ranked)
-            rounds = 2
+            second_actions = [action for action in second_actions if self._source_available(action.source)]
+            if second_actions:
+                all_candidates.extend(self._run_actions(second_actions, execution=execution))
+                ranked = self._rank(all_candidates, parsed, query=query, top_k=top_k, model_events=model_events)
+                coverage = self.coverage.analyze(parsed, ranked)
+                rounds = 2
 
         self._apply_crawler_strategy(query, ranked, model_events)
         elapsed = time.perf_counter() - started
         citation_seeds = self.citation_expansion.select_seeds(parsed, ranked)
         final_plan = replace(first_plan, expand_citations_for=[seed.paper_id for seed in citation_seeds])
         diagnostic_pool = _diagnostic_pool_snapshot(self.normalizer.merge(all_candidates), limit=max(500, top_k))
+        corpus_stats = self.corpus.stats()
         cost: dict[str, Any] = {
             "latency_sec": round(elapsed, 4),
             "rounds": rounds,
-            "actions_executed": actions_executed,
+            "actions_executed": execution.actions_executed,
             "raw_candidates": len(all_candidates),
             "unique_candidates": len(self.normalizer.merge(all_candidates)),
             "diagnostic_pool_candidates": diagnostic_pool,
-            "api_calls": 0,
+            "api_calls": execution.api_actions_executed,
             "llm_calls": 0,
             "citation_expansion_seeds": [asdict(seed) for seed in citation_seeds],
             "query_type": query_profile,
@@ -191,7 +208,7 @@ class SearchPipeline:
             "sparse_paper_used": _source_used(all_candidates, "qdrant_sparse_paper"),
             "alias_used": _source_used(all_candidates, "neo4j_alias"),
             "model_services": model_events,
-            **self.corpus.stats(),
+            **corpus_stats,
         }
         if self.backend_error:
             cost["backend_fallback_reason"] = self.backend_error
@@ -235,13 +252,29 @@ class SearchPipeline:
         }
         return graph_candidates
 
-    def _run_actions(self, actions: list[SearchAction]) -> list[Candidate]:
+    def _run_actions(
+        self,
+        actions: list[SearchAction],
+        *,
+        execution: _RetrievalExecution | None = None,
+    ) -> list[Candidate]:
+        execution = execution or _RetrievalExecution(api_action_budget=len(actions))
         candidates: list[Candidate] = []
         for action in actions:
+            if not self._source_available(action.source):
+                continue
+            if action.source in {"semantic_scholar", "semantic_scholar_snippet"}:
+                if execution.api_actions_executed >= execution.api_action_budget:
+                    continue
+                execution.api_actions_executed += 1
+            execution.actions_executed += 1
             action_candidates = self.corpus.run_action(action)
             _annotate_source_ranks(action_candidates, action)
             candidates.extend(action_candidates)
         return candidates
+
+    def _source_available(self, source: str) -> bool:
+        return self.available_sources is None or source in self.available_sources
 
     def _rank(
         self,
@@ -583,6 +616,16 @@ def _source_rank_backfill(candidates: list[Candidate], intent: QueryIntent, *, t
     for candidate in candidates[:anchor_count]:
         add(candidate)
 
+    academic_anchors = sorted(
+        (candidate for candidate in candidates[anchor_count:] if _strong_academic_evidence(candidate)),
+        key=lambda candidate: (
+            _safe_int((candidate.metadata.get("source_ranks") or {}).get("semantic_scholar")),
+            _safe_int((candidate.metadata.get("source_ranks") or {}).get("semantic_scholar_snippet")),
+        ),
+    )
+    for candidate in academic_anchors[: min(3, max(1, target // 12))]:
+        add(candidate, "semantic_scholar")
+
     scored_pool: list[tuple[float, float, int, str, Candidate]] = []
     for index, candidate in enumerate(candidates[anchor_count:front_pool_size], start=anchor_count + 1):
         bonus, reason = _source_rank_backfill_bonus(candidate, profile)
@@ -615,7 +658,15 @@ def _source_rank_backfill_bonus(candidate: Candidate, profile: str) -> tuple[flo
         return 0.0, ""
     support_sources = [
         source
-        for source in ("local_title_bm25", "local_chunk_bm25", "qdrant_sparse_paper", "local_tfidf", "neo4j_concept")
+        for source in (
+            "local_title_bm25",
+            "local_chunk_bm25",
+            "qdrant_sparse_paper",
+            "local_tfidf",
+            "neo4j_concept",
+            "semantic_scholar",
+            "semantic_scholar_snippet",
+        )
         if source in ranks and max(1, _safe_int(ranks.get(source))) <= 100
     ]
     support = len(support_sources)
@@ -634,6 +685,12 @@ def _source_rank_backfill_bonus(candidate: Candidate, profile: str) -> tuple[flo
     sparse_rank = max(1, _safe_int(ranks.get("qdrant_sparse_paper"))) if "qdrant_sparse_paper" in ranks else None
     tfidf_rank = max(1, _safe_int(ranks.get("local_tfidf"))) if "local_tfidf" in ranks else None
     graph_rank = max(1, _safe_int(ranks.get("neo4j_concept"))) if "neo4j_concept" in ranks else None
+    s2_rank = max(1, _safe_int(ranks.get("semantic_scholar"))) if "semantic_scholar" in ranks else None
+    snippet_rank = (
+        max(1, _safe_int(ranks.get("semantic_scholar_snippet")))
+        if "semantic_scholar_snippet" in ranks
+        else None
+    )
 
     if title_rank is not None and title_rank <= 100:
         value = 0.2 / (1.0 + title_rank / 28.0)
@@ -667,6 +724,12 @@ def _source_rank_backfill_bonus(candidate: Candidate, profile: str) -> tuple[flo
         value = 0.05 / (1.0 + graph_rank / 20.0)
         bonus += value
         reasons.append(f"neo4j_concept:{graph_rank}")
+    if s2_rank is not None and s2_rank <= 100:
+        value = 0.18 / (1.0 + s2_rank / 30.0)
+        if snippet_rank is not None and snippet_rank <= 120:
+            value += 0.16 / (1.0 + snippet_rank / 36.0)
+        bonus += value
+        reasons.append(f"semantic_scholar:{s2_rank}")
     if support >= 3:
         bonus += 0.08
         reasons.append("support>=3")
@@ -692,6 +755,18 @@ def _source_rank_backfill_bonus(candidate: Candidate, profile: str) -> tuple[flo
         bonus *= 0.7
     cap = 0.5 if profile in {"real_multi_answer", "survey_or_list"} and semantic_support else 0.36
     return min(cap, bonus), ",".join(reasons[:5])
+
+
+def _strong_academic_evidence(candidate: Candidate) -> bool:
+    ranks = candidate.metadata.get("source_ranks") or {}
+    if not isinstance(ranks, dict):
+        return False
+    return (
+        "semantic_scholar" in ranks
+        and max(1, _safe_int(ranks.get("semantic_scholar"))) <= 50
+        and "semantic_scholar_snippet" in ranks
+        and max(1, _safe_int(ranks.get("semantic_scholar_snippet"))) <= 80
+    )
 
 
 def _source_backfill_anchor_count(profile: str, target: int) -> int:
@@ -880,6 +955,7 @@ def _rrf_source_weight(action: SearchAction) -> float:
         "neo4j_alias": 1.1,
         "neo4j_concept": 0.72,
         "semantic_scholar": 0.86,
+        "semantic_scholar_snippet": 0.8,
     }.get(action.source, 1.0)
     return base * max(0.1, action.weight)
 

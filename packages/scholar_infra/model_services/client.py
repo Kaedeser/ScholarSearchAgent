@@ -207,7 +207,7 @@ class SelectorRerankerServiceClient:
                 "id": candidate.canonical_id or candidate.paper_id,
                 "paper_id": candidate.paper_id,
                 "title": candidate.title,
-                "abstract": candidate.abstract,
+                "abstract": _candidate_evidence_text(candidate),
             }
             for candidate in candidates
         ]
@@ -439,6 +439,12 @@ def _strip_code_fence(text: str) -> str:
     if lines and lines[-1].strip() == "```":
         lines = lines[:-1]
     return "\n".join(lines).strip()
+
+
+def _candidate_evidence_text(candidate: Candidate, *, limit: int = 6000) -> str:
+    parts = [candidate.abstract.strip()]
+    parts.extend(snippet.strip() for snippet in candidate.snippets[:4] if snippet.strip())
+    return "\n\n".join(dict.fromkeys(part for part in parts if part))[:limit]
 
 
 def _strip_think_block(text: str) -> str:

@@ -73,7 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chunk-limit", type=int, default=None)
     parser.add_argument("--max-chunks-per-paper", type=int, default=4)
     parser.add_argument("--per-query-top-k", type=int, default=60)
-    parser.add_argument("--backend", choices=("auto", "jsonl", "database"), default="auto")
+    parser.add_argument(
+        "--backend",
+        choices=("auto", "jsonl", "database", "semantic_scholar"),
+        default="auto",
+    )
     parser.add_argument("--disable-model-services", action="store_true")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

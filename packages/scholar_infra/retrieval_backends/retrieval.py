@@ -17,7 +17,6 @@ from packages.scholar_core.retrieval.weighted_query import (
     weighted_query_tokens,
     weighted_token_map,
 )
-from packages.scholar_core.retrieval.ports import CorpusBackend
 from packages.scholar_core.text import best_snippet, cosine_sparse, token_counter, tokenize
 from packages.scholar_infra.academic_search import AcademicSearchError, SemanticScholarClient
 from packages.scholar_infra.embeddings import DenseEmbedder, build_dense_embedder
@@ -134,6 +133,11 @@ def _semantic_scholar_client_from_settings(
             base_url=settings.academic_search_base_url,
             api_key=settings.academic_search_api_key,
             timeout=settings.academic_search_timeout_sec,
+            max_retries=getattr(settings, "academic_search_max_retries", 2),
+            retry_backoff_sec=getattr(settings, "academic_search_retry_backoff_sec", 1.0),
+            min_interval_sec=getattr(settings, "academic_search_min_interval_sec", 1.0),
+            cache_size=getattr(settings, "academic_search_cache_size", 256),
+            cache_path=getattr(settings, "academic_search_cache_path", ""),
         ),
         None,
     )
@@ -143,10 +147,13 @@ def _semantic_scholar_candidates(
     client: SemanticScholarClient,
     action: SearchAction,
 ) -> list[Candidate]:
-    results = client.search(action.query, limit=action.top_k)
+    results = client.search(action.query, limit=action.top_k, filters=action.filters or None)
     candidates: list[Candidate] = []
     for rank, result in enumerate(results, start=1):
         raw_score = action.weight / rank
+        aliases = {result.paper_id, *_external_aliases(result.external_ids or {})}
+        if result.corpus_id:
+            aliases.add(f"s2-corpus:{result.corpus_id}")
         candidates.append(
             Candidate(
                 paper_id=result.paper_id,
@@ -155,7 +162,7 @@ def _semantic_scholar_candidates(
                 year=result.year,
                 venue=result.venue,
                 citation_count=result.citation_count,
-                aliases={result.paper_id, *_external_aliases(result.external_ids or {})},
+                aliases=aliases,
                 sources={action.source, "academic_api"},
                 raw_scores={action.source: raw_score},
                 snippets=[best_snippet(f"{result.title}. {result.abstract}", set(tokenize(action.query)))],
@@ -164,11 +171,97 @@ def _semantic_scholar_candidates(
                     "academic_api_provider": "semantic_scholar",
                     "academic_api_url": result.url,
                     "external_ids": result.external_ids or {},
+                    "semantic_scholar_corpus_id": result.corpus_id,
                     "academic_api_rank": rank,
+                    "influential_citation_count": result.influential_citation_count,
+                    "reference_count": result.reference_count,
+                    "fields_of_study": list(result.fields_of_study),
+                    "publication_types": list(result.publication_types),
+                    "publication_date": result.publication_date,
+                    "authors": list(result.authors),
                 },
             )
         )
     return candidates
+
+
+def _semantic_scholar_snippet_candidates(
+    client: SemanticScholarClient,
+    action: SearchAction,
+) -> list[Candidate]:
+    results = client.search_snippets(action.query, limit=action.top_k, filters=action.filters or None)
+    candidates: list[Candidate] = []
+    for rank, result in enumerate(results, start=1):
+        paper_id = result.paper_id or f"s2-snippet:{rank}"
+        aliases = {paper_id}
+        if result.corpus_id:
+            aliases.add(f"s2-corpus:{result.corpus_id}")
+        candidates.append(
+            Candidate(
+                paper_id=paper_id,
+                title=result.title,
+                aliases=aliases,
+                sources={action.source, "academic_api"},
+                raw_scores={action.source: max(0.0, result.score) * action.weight},
+                snippets=[result.text] if result.text else [],
+                metadata={
+                    "source_query": action.query,
+                    "academic_api_provider": "semantic_scholar",
+                    "academic_api_rank": rank,
+                    "snippet_score": result.score,
+                    "snippet_section": result.section,
+                    "snippet_kind": result.snippet_kind,
+                    "authors": list(result.authors),
+                },
+            )
+        )
+    return candidates
+
+
+class SemanticScholarCorpus:
+    """API-only corpus used when the submission has no local retrieval databases."""
+
+    backend_name = "semantic_scholar"
+
+    def __init__(self, settings: Any | None = None) -> None:
+        if settings is None:
+            from packages.scholar_infra.config import ScholarSearchSettings
+
+            settings = ScholarSearchSettings.from_env()
+        self.settings = settings
+        self._semantic_scholar, self._academic_search_error = _semantic_scholar_client_from_settings(settings)
+        if self._semantic_scholar is None:
+            raise ValueError(self._academic_search_error or "Semantic Scholar is not configured")
+
+    @property
+    def supported_sources(self) -> set[str]:
+        sources = {"semantic_scholar"}
+        if getattr(self.settings, "academic_search_snippet_enabled", True):
+            sources.add("semantic_scholar_snippet")
+        return sources
+
+    def run_action(self, action: SearchAction) -> list[Candidate]:
+        if action.source not in self.supported_sources or self._semantic_scholar is None:
+            return []
+        try:
+            if action.source == "semantic_scholar_snippet":
+                return _semantic_scholar_snippet_candidates(self._semantic_scholar, action)
+            return _semantic_scholar_candidates(self._semantic_scholar, action)
+        except AcademicSearchError as exc:
+            self._academic_search_error = str(exc)
+            return []
+
+    def stats(self) -> dict[str, Any]:
+        stats: dict[str, Any] = {
+            "backend": self.backend_name,
+            "academic_search_status": "enabled",
+            "academic_search_provider": "semantic_scholar",
+        }
+        if self._semantic_scholar is not None:
+            stats.update(self._semantic_scholar.stats())
+        if self._academic_search_error:
+            stats["academic_search_error"] = self._academic_search_error
+        return stats
 
 
 class LocalCorpus:
@@ -233,6 +326,8 @@ class LocalCorpus:
     def run_action(self, action: SearchAction) -> list[Candidate]:
         if action.source == "semantic_scholar":
             return self._search_semantic_scholar(action)
+        if action.source == "semantic_scholar_snippet":
+            return self._search_semantic_scholar_snippets(action)
         if action.source == "local_title_bm25":
             hits = self.title_bm25.search(action.query, top_k=action.top_k)
         elif action.source == "local_chunk_bm25":
@@ -243,8 +338,16 @@ class LocalCorpus:
             return []
         return [self._candidate_from_hit(hit, action) for hit in hits]
 
+    @property
+    def supported_sources(self) -> set[str]:
+        sources = {"local_title_bm25", "local_chunk_bm25", "local_tfidf"}
+        if self._semantic_scholar is not None:
+            sources.add("semantic_scholar")
+            sources.add("semantic_scholar_snippet")
+        return sources
+
     def stats(self) -> dict:
-        stats = {
+        stats: dict[str, Any] = {
             "backend": self.backend_name,
             "papers_loaded": len(self.papers),
             "chunks_loaded": sum(len(chunks) for chunks in self.chunks_by_paper.values()),
@@ -252,6 +355,7 @@ class LocalCorpus:
         if self._semantic_scholar is not None:
             stats["academic_search_status"] = "enabled"
             stats["academic_search_provider"] = "semantic_scholar"
+            stats.update(self._semantic_scholar.stats())
         elif self._academic_search_error is not None:
             stats["academic_search_error"] = self._academic_search_error
         return stats
@@ -261,6 +365,15 @@ class LocalCorpus:
             return []
         try:
             return _semantic_scholar_candidates(self._semantic_scholar, action)
+        except AcademicSearchError as exc:
+            self._academic_search_error = str(exc)
+            return []
+
+    def _search_semantic_scholar_snippets(self, action: SearchAction) -> list[Candidate]:
+        if self._semantic_scholar is None:
+            return []
+        try:
+            return _semantic_scholar_snippet_candidates(self._semantic_scholar, action)
         except AcademicSearchError as exc:
             self._academic_search_error = str(exc)
             return []
@@ -370,7 +483,24 @@ class DatabaseCorpus:
             return self._search_neo4j_aliases(action)
         if action.source == "semantic_scholar":
             return self._search_semantic_scholar(action)
+        if action.source == "semantic_scholar_snippet":
+            return self._search_semantic_scholar_snippets(action)
         return []
+
+    @property
+    def supported_sources(self) -> set[str]:
+        sources = {"local_title_bm25", "local_chunk_bm25", "local_tfidf"}
+        if self._dense_embedder is not None:
+            sources.add("qdrant_dense_paper")
+        if getattr(self.settings, "qdrant_sparse_paper_enabled", False):
+            sources.add("qdrant_sparse_paper")
+        if self._neo4j is not None:
+            sources.update({"neo4j_concept", "neo4j_alias"})
+        if self._semantic_scholar is not None:
+            sources.add("semantic_scholar")
+            if getattr(self.settings, "academic_search_snippet_enabled", True):
+                sources.add("semantic_scholar_snippet")
+        return sources
 
     def _init_academic_search(self) -> None:
         self._semantic_scholar, self._academic_search_error = _semantic_scholar_client_from_settings(
@@ -382,6 +512,15 @@ class DatabaseCorpus:
             return []
         try:
             return _semantic_scholar_candidates(self._semantic_scholar, action)
+        except AcademicSearchError as exc:
+            self._academic_search_error = str(exc)
+            return []
+
+    def _search_semantic_scholar_snippets(self, action: SearchAction) -> list[Candidate]:
+        if self._semantic_scholar is None:
+            return []
+        try:
+            return _semantic_scholar_snippet_candidates(self._semantic_scholar, action)
         except AcademicSearchError as exc:
             self._academic_search_error = str(exc)
             return []
@@ -589,7 +728,7 @@ class DatabaseCorpus:
         return results
 
     def stats(self) -> dict:
-        stats = {"backend": self.backend_name}
+        stats: dict[str, Any] = {"backend": self.backend_name}
         try:
             stats["es_papers"] = self.es.count(self.settings.papers_index)
             stats["es_chunks"] = self.es.count(self.settings.chunks_index)
@@ -622,6 +761,7 @@ class DatabaseCorpus:
         if self._semantic_scholar is not None:
             stats["academic_search_status"] = "enabled"
             stats["academic_search_provider"] = "semantic_scholar"
+            stats.update(self._semantic_scholar.stats())
         elif self._academic_search_error is not None:
             stats["academic_search_error"] = self._academic_search_error
         return stats

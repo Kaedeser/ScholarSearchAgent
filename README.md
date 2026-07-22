@@ -52,7 +52,8 @@ configs/database.env.example
 外部学术搜索 API 可选启用：
 
 - Semantic Scholar：`ACADEMIC_SEARCH_ENABLED=true`、`ACADEMIC_SEARCH_PROVIDER=semantic_scholar`
-- `database` 与本地 JSONL 回退后端都可执行 Semantic Scholar 检索动作
+- `semantic_scholar` 后端只依赖公开 API；`database` 后端会把 API 结果与 ES、Qdrant、Neo4j 结果融合粗排
+- `auto` 会优先使用数据库，数据库初始化失败且 Semantic Scholar 已启用时直接回退到 API-only 后端
 
 Query Rewrite 和 Dense Embedding 依赖单独的 GPUStack/OpenAI-compatible 凭据，仍按各自开关显式启用。离线调试可在命令中添加 `--disable-model-services`，一次性关闭三个训练模型服务。
 
@@ -89,6 +90,12 @@ python -m apps.backend.scholar_api.cli --backend auto search --query "image retr
 
 ```powershell
 python -m apps.backend.scholar_api.cli --backend database serve --host 127.0.0.1 --port 8765
+```
+
+仅使用 Semantic Scholar（无需配置 ES、Qdrant、Neo4j）：
+
+```powershell
+python -m apps.backend.scholar_api.cli --backend semantic_scholar serve --host 127.0.0.1 --port 8765
 ```
 
 离线 JSONL 后端：

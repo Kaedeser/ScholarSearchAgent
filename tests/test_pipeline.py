@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from apps.backend.scholar_api.api.routes.health import health_response
 from apps.backend.scholar_api.api.schemas.search import parse_search_query
-from packages.scholar_core.models import Candidate
+from packages.scholar_core.models import Candidate, SearchAction
 from packages.scholar_core.model_services.ports import CrawlerStrategyPrediction, QueryIntentPrediction, QueryRewritePrediction
 from packages.scholar_core.normalization.normalizer import CandidateNormalizer
 from packages.scholar_core.pipeline import SearchPipeline
@@ -662,6 +662,92 @@ def test_candidate_preselector_limits_pool_but_keeps_source_anchors():
     }
     assert selected.metadata["input_candidates"] == 71
     assert selected.metadata["selected_candidates"] == 50
+
+
+def test_semantic_scholar_sources_participate_in_rrf_preselector_and_backfill():
+    from packages.scholar_core.pipeline import _annotate_source_ranks, _source_rank_backfill
+    from packages.scholar_core.ranking.preselector import CandidatePreselector
+
+    parsed = QueryParser().parse("Find papers about semantic scholar snippet fusion for retrieval.")
+    fillers = [
+        Candidate(
+            f"arxiv:filler-{index}",
+            f"Generic Retrieval Paper {index}",
+            abstract="Retrieval paper without Semantic Scholar evidence.",
+            sources={"qdrant_dense_paper"},
+            raw_scores={"qdrant_dense_paper": 1.0},
+            final_score=1.0 - index * 0.002,
+            metadata={"source_ranks": {"qdrant_dense_paper": index + 1}},
+        )
+        for index in range(60)
+    ]
+    s2_candidate = Candidate(
+        "s2:snippet-anchor",
+        "Semantic Scholar Snippet Fusion for Retrieval",
+        abstract="Cross-source retrieval with Semantic Scholar snippets.",
+        sources={"semantic_scholar", "semantic_scholar_snippet", "academic_api"},
+        raw_scores={"semantic_scholar": 0.2, "semantic_scholar_snippet": 0.2},
+        snippets=["Semantic Scholar matched snippet about fusion and retrieval."],
+        final_score=0.01,
+        metadata={"source_ranks": {"semantic_scholar": 1, "semantic_scholar_snippet": 1}},
+    )
+
+    _annotate_source_ranks([s2_candidate], SearchAction("semantic_scholar", parsed.sub_queries[0], 10, 1.0))
+    _annotate_source_ranks([s2_candidate], SearchAction("semantic_scholar_snippet", parsed.sub_queries[0], 10, 1.0))
+
+    assert s2_candidate.raw_scores["rrf:semantic_scholar"] > 0
+    assert s2_candidate.raw_scores["rrf:semantic_scholar_snippet"] > 0
+    assert s2_candidate.metadata["source_ranks"]["semantic_scholar"] == 1
+    assert s2_candidate.metadata["source_ranks"]["semantic_scholar_snippet"] == 1
+
+    pool = [*fillers, s2_candidate]
+    selected = CandidatePreselector().select(pool, parsed, top_k=10, pool_limit=61)
+    assert "s2:snippet-anchor" in [candidate.paper_id for candidate in selected.candidates]
+    assert selected.metadata["selected_source_counts"]["semantic_scholar"] == 1
+    assert selected.metadata["selected_source_counts"]["semantic_scholar_snippet"] == 1
+
+    backfilled = _source_rank_backfill(pool, parsed, top_k=50)
+    backfilled_ids = [candidate.paper_id for candidate in backfilled[:50]]
+    assert "s2:snippet-anchor" in backfilled_ids
+    assert "semantic_scholar" in s2_candidate.metadata["source_rank_backfill"]
+
+
+def test_semantic_scholar_only_pipeline_enforces_planned_api_action_budget():
+    class AcademicOnlyCorpus:
+        backend_name = "semantic_scholar"
+        supported_sources = {"semantic_scholar", "semantic_scholar_snippet"}
+
+        def __init__(self):
+            self.actions = []
+
+        def run_action(self, action):
+            self.actions.append(action)
+            return []
+
+        def stats(self):
+            return {"backend": self.backend_name, "academic_search_api_calls": 0}
+
+    corpus = AcademicOnlyCorpus()
+    pipeline = SearchPipeline(
+        corpus,
+        academic_search_enabled=True,
+        academic_search_query_limit=2,
+        academic_search_top_k=20,
+        academic_search_snippet_enabled=True,
+        academic_search_snippet_top_k=30,
+    )
+
+    response = pipeline.search("Find papers about retrieval augmented generation evaluation", top_k=5)
+
+    assert response.plan.budget["max_api_calls"] == 4
+    assert response.cost["actions_executed"] == 4
+    assert response.cost["api_calls"] == 4
+    assert response.cost["rounds"] == 1
+    assert len(corpus.actions) == 4
+    assert {action.source for action in corpus.actions} == {
+        "semantic_scholar",
+        "semantic_scholar_snippet",
+    }
 
 
 def test_pipeline_returns_ranked_result(tmp_path):

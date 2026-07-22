@@ -67,6 +67,22 @@ def test_scholar_settings_reads_academic_search_options(tmp_path, monkeypatch):
     assert settings.academic_search_top_k == 25
 
 
+def test_scholar_settings_reads_academic_search_retry_cache_and_snippet_options(tmp_path, monkeypatch):
+    config_path = tmp_path / "database.env"
+    cache_path = tmp_path / "semantic-scholar-cache.json"
+    config_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("SCHOLAR_SEARCH_CONFIG", str(config_path))
+    monkeypatch.setenv("ACADEMIC_SEARCH_CACHE_PATH", str(cache_path))
+    monkeypatch.setenv("ACADEMIC_SEARCH_MAX_RETRIES", "2")
+    monkeypatch.setenv("ACADEMIC_SEARCH_SNIPPET_TOP_K", "6")
+
+    settings = ScholarSearchSettings.from_env()
+
+    assert settings.academic_search_cache_path == str(cache_path)
+    assert settings.academic_search_max_retries == 2
+    assert settings.academic_search_snippet_top_k == 6
+
+
 def test_selector_reranker_sorts_after_score_fusion(monkeypatch):
     def fake_post_json(base_url, path, payload, *, timeout):
         return {
@@ -101,6 +117,32 @@ def test_selector_reranker_sorts_after_score_fusion(monkeypatch):
 
     assert reranked[30].paper_id == "a"
     assert reranked.index(alias_candidate) < 35
+
+
+def test_selector_reranker_request_documents_include_candidate_snippets(monkeypatch):
+    captured = {}
+
+    def fake_post_json(base_url, path, payload, *, timeout):
+        captured["payload"] = payload
+        return {
+            "count": 1,
+            "threshold": 0.5,
+            "results": [{"id": "s2:snippet", "paper_id": "s2:snippet", "score": 0.9, "relevant": True}],
+        }
+
+    monkeypatch.setattr(model_client, "_post_json", fake_post_json)
+    service = SelectorRerankerServiceClient("http://selector.test", timeout=1.0)
+    candidate = Candidate(
+        "s2:snippet",
+        "Snippet Aware Paper",
+        abstract="Abstract alone omits the decisive evidence.",
+        snippets=["Decisive Semantic Scholar snippet evidence for reranking."],
+    )
+
+    service.rerank("snippet evidence", [candidate], top_k=1)
+
+    serialized_document = str(captured["payload"]["documents"][0])
+    assert "Decisive Semantic Scholar snippet evidence for reranking." in serialized_document
 
 
 def test_query_rewrite_client_parses_and_caches_openai_response(tmp_path, monkeypatch):

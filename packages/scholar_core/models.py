@@ -37,6 +37,7 @@ class SearchAction:
     query: str
     top_k: int
     weight: float = 1.0
+    filters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
