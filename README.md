@@ -57,6 +57,10 @@ configs/database.env.example
 
 Query Rewrite 和 Dense Embedding 依赖单独的 GPUStack/OpenAI-compatible 凭据，仍按各自开关显式启用。离线调试可在命令中添加 `--disable-model-services`，一次性关闭三个训练模型服务。
 
+## 模型文件
+
+完整的辅助模型文件、文件清单和 SHA-256 校验值发布在 [Hugging Face 数据集](https://huggingface.co/datasets/cdadsasda/ScholarSearchAgentAuxiliaryModel)。模型归档以 16 个顺序分卷提供；下载全部文件后，请按数据集 README 中的步骤合并并解压。
+
 ## 常用命令
 
 启动后端 API：
